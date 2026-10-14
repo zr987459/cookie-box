@@ -2,11 +2,12 @@
 <com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/cardCookie"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_marginVertical="4dp"
+    android:layout_marginVertical="5dp"
     app:cardBackgroundColor="@color/surface_variant"
-    app:cardCornerRadius="14dp"
+    app:cardCornerRadius="16dp"
     app:cardElevation="0dp"
     app:strokeWidth="0dp">
 
@@ -14,8 +15,9 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="12dp">
+        android:padding="14dp">
 
+        <!-- 顶部：Cookie 名字、分类标签与快捷复制按钮 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -23,39 +25,89 @@
             android:orientation="horizontal">
 
             <TextView
+                android:id="@+id/tvCookieCategory"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="6dp"
+                android:background="@drawable/bg_search_box"
+                android:paddingHorizontal="6dp"
+                android:paddingVertical="2dp"
+                android:text="核心凭据"
+                android:textColor="@color/primary"
+                android:textSize="10sp"
+                android:textStyle="bold" />
+
+            <TextView
                 android:id="@+id/tvCookieName"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
+                android:ellipsize="end"
                 android:fontFamily="monospace"
+                android:singleLine="true"
                 android:textColor="@color/primary"
-                android:textSize="13sp"
+                android:textSize="14sp"
                 android:textStyle="bold"
                 tools:text="SESSDATA" />
 
+            <!-- 单独复制纯值 -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnCopyValueOnly"
+                style="@style/Widget.Material3.Button.TonalButton"
+                android:layout_width="wrap_content"
+                android:layout_height="32dp"
+                android:layout_marginEnd="4dp"
+                android:minWidth="0dp"
+                android:paddingHorizontal="10dp"
+                android:text="复制值"
+                android:textSize="11sp"
+                app:cornerRadius="10dp" />
+
+            <!-- 复制完整 name=value -->
             <ImageButton
                 android:id="@+id/btnCopySingle"
                 android:layout_width="32dp"
                 android:layout_height="32dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="复制单项"
+                android:contentDescription="复制键值对"
                 android:padding="6dp"
                 android:src="@drawable/ic_copy" />
         </LinearLayout>
 
+        <!-- 介绍与说明 -->
         <TextView
-            android:id="@+id/tvCookieValue"
+            android:id="@+id/tvCookieDescription"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:ellipsize="end"
-            android:fontFamily="monospace"
-            android:maxLines="3"
-            android:textIsSelectable="true"
+            android:layout_marginTop="5dp"
+            android:lineSpacingExtra="2dp"
             android:textColor="@color/on_surface"
-            android:textSize="11sp"
-            tools:text="abcdef1234567890abcdef1234567890..." />
+            android:textSize="12sp"
+            tools:text="💡 B站核心登录凭据 (最关键！拥有此项即可免密登录账号)" />
 
+        <!-- Cookie 值预览（点击即可快速复制） -->
+        <LinearLayout
+            android:id="@+id/layoutValueClickable"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/bg_search_box"
+            android:orientation="vertical"
+            android:padding="8dp">
+
+            <TextView
+                android:id="@+id/tvCookieValue"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:fontFamily="monospace"
+                android:maxLines="3"
+                android:textColor="@color/on_surface_variant"
+                android:textSize="11sp"
+                tools:text="abcdef1234567890abcdef1234567890..." />
+        </LinearLayout>
+
+        <!-- 底部信息：域名与字符长度 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -67,12 +119,9 @@
                 android:id="@+id/tvDomainTag"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:background="@drawable/bg_search_box"
-                android:paddingHorizontal="6dp"
-                android:paddingVertical="2dp"
                 android:textColor="@color/on_surface_variant"
                 android:textSize="10sp"
-                tools:text=".bilibili.com" />
+                tools:text="域名: .bilibili.com" />
 
             <View
                 android:layout_width="0dp"

@@ -68,9 +68,16 @@ class CookieBottomSheetDialog : BottomSheetDialogFragment() {
         binding?.let { b ->
             b.tvSheetSubtitle.text = if (host.isNotBlank()) host else "当前页面"
 
-            val newAdapter = CookieAdapter { item ->
-                copyToClipboard("${item.name}=${item.value}", "Cookie: ${item.name}")
-            }
+            val newAdapter = CookieAdapter(
+                onCopyPair = { item ->
+                    copyToClipboard("${item.name}=${item.value}", "Cookie: ${item.name}")
+                    Toast.makeText(requireContext(), "已复制 [${item.name}] 键值对", Toast.LENGTH_SHORT).show()
+                },
+                onCopyValueOnly = { item ->
+                    copyToClipboard(item.value, "Cookie Value: ${item.name}")
+                    Toast.makeText(requireContext(), "已复制 [${item.name}] 纯值", Toast.LENGTH_SHORT).show()
+                }
+            )
             adapter = newAdapter
 
             b.rvCookies.layoutManager = LinearLayoutManager(requireContext())

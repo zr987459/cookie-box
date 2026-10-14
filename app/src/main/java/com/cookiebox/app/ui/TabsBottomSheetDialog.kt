@@ -17,7 +17,7 @@ class TabsBottomSheetDialog : BottomSheetDialogFragment() {
 
     var onTabSelected: ((String) -> Unit)? = null
     var onTabClosed: ((String) -> Unit)? = null
-    var onNewTabRequested: (() -> Unit)? = null
+    var onNewTabRequested: ((isIsolated: Boolean) -> Unit)? = null
     var onDismissListener: (() -> Unit)? = null
 
     private var tabList: List<TabItem> = emptyList()
@@ -63,7 +63,12 @@ class TabsBottomSheetDialog : BottomSheetDialogFragment() {
 
             b.btnNewTab.setOnClickListener {
                 dismiss()
-                onNewTabRequested?.invoke()
+                onNewTabRequested?.invoke(false)
+            }
+
+            b.btnNewIsolatedTab.setOnClickListener {
+                dismiss()
+                onNewTabRequested?.invoke(true)
             }
         }
     }

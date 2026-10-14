@@ -16,7 +16,7 @@
         android:layout_marginBottom="12dp"
         android:background="@drawable/bg_search_box" />
 
-    <!-- 标题与新建窗口按钮 -->
+    <!-- 标题与状态 -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -47,16 +47,34 @@
                 tools:text="当前打开 2 个窗口" />
         </LinearLayout>
 
+        <!-- 两种新建方式 -->
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnNewTab"
             style="@style/Widget.Material3.Button.TonalButton"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="@string/new_tab"
+            android:layout_marginEnd="6dp"
+            android:minWidth="0dp"
+            android:paddingHorizontal="10dp"
+            android:text="新标签"
             android:textColor="@color/primary"
-            app:cornerRadius="20dp"
+            app:cornerRadius="18dp"
             app:icon="@drawable/ic_add"
             app:iconTint="@color/primary" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnNewIsolatedTab"
+            style="@style/Widget.Material3.Button"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:minWidth="0dp"
+            android:paddingHorizontal="12dp"
+            android:text="多开小号"
+            android:textColor="@color/on_primary"
+            app:backgroundTint="@color/primary"
+            app:cornerRadius="18dp"
+            app:icon="@drawable/ic_add"
+            app:iconTint="@color/on_primary" />
     </LinearLayout>
 
     <!-- 标签列表 -->

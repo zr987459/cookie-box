@@ -46,6 +46,7 @@ class TabsAdapter(
             binding.tvTabUrl.text = if (tab.url.isNotBlank()) tab.url else "about:blank"
 
             binding.tvActiveBadge.visibility = if (isActive) View.VISIBLE else View.GONE
+            binding.tvIsolatedBadge.visibility = if (tab.isIsolated) View.VISIBLE else View.GONE
             binding.cardTab.strokeWidth = if (isActive) 3 else 0
 
             binding.root.setOnClickListener {
