@@ -25,14 +25,14 @@ import java.util.UUID
 class CookieBottomSheetDialog : BottomSheetDialogFragment() {
 
     private var _binding: DialogCookieSheetBinding? = null
-    private val binding get() = _binding!!
+    private val binding get() = _binding
 
     private var targetUrl: String = ""
     private var webTitle: String = ""
     private var currentUserAgent: String = ""
     private var preloadedJson: String? = null
     private var cookieList: List<CookieItem> = emptyList()
-    private lateinit var adapter: CookieAdapter
+    private var adapter: CookieAdapter? = null
 
     private enum class Mode {
         LIST, HEADER, JSON, NETSCAPE, PYTHON, CURL
@@ -51,9 +51,9 @@ class CookieBottomSheetDialog : BottomSheetDialogFragment() {
         inflater: LayoutInflater,
         container: ViewGroup?,
         savedInstanceState: Bundle?
-    ): View {
+    ): View? {
         _binding = DialogCookieSheetBinding.inflate(inflater, container, false)
-        return binding.root
+        return _binding?.root
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -64,54 +64,58 @@ class CookieBottomSheetDialog : BottomSheetDialogFragment() {
         } catch (e: Exception) {
             targetUrl
         }
-        binding.tvSheetSubtitle.text = if (host.isNotBlank()) host else "当前页面"
 
-        // 初始化 RecyclerView 与适配器
-        adapter = CookieAdapter { item ->
-            copyToClipboard("${item.name}=${item.value}", "Cookie: ${item.name}")
-        }
-        binding.rvCookies.layoutManager = LinearLayoutManager(requireContext())
-        binding.rvCookies.adapter = adapter
+        binding?.let { b ->
+            b.tvSheetSubtitle.text = if (host.isNotBlank()) host else "当前页面"
 
-        // 提取或载入数据
-        cookieList = if (!preloadedJson.isNullOrBlank()) {
-            val record = SavedCookieRecord(
-                id = "",
-                title = webTitle,
-                domain = host,
-                url = targetUrl,
-                cookieJson = preloadedJson!!,
-                count = 0
-            )
-            record.getCookieList()
-        } else {
-            CookieExtractor.extractCookies(targetUrl)
-        }
+            val newAdapter = CookieAdapter { item ->
+                copyToClipboard("${item.name}=${item.value}", "Cookie: ${item.name}")
+            }
+            adapter = newAdapter
 
-        binding.chipCount.text = "${cookieList.size} 项"
+            b.rvCookies.layoutManager = LinearLayoutManager(requireContext())
+            b.rvCookies.adapter = newAdapter
 
-        if (cookieList.isEmpty()) {
-            binding.tvEmptyHint.visibility = View.VISIBLE
-            binding.rvCookies.visibility = View.GONE
-            binding.scrollCodeView.visibility = View.GONE
-            binding.btnCopyAll.isEnabled = false
-            binding.btnSaveStorage.isEnabled = false
-        } else {
-            binding.tvEmptyHint.visibility = View.GONE
-            adapter.setData(cookieList)
-            binding.btnCopyAll.isEnabled = true
-            binding.btnSaveStorage.isEnabled = true
-        }
+            // 提取或载入数据
+            cookieList = if (!preloadedJson.isNullOrBlank()) {
+                val record = SavedCookieRecord(
+                    id = "",
+                    title = webTitle,
+                    domain = host,
+                    url = targetUrl,
+                    cookieJson = preloadedJson!!,
+                    count = 0
+                )
+                record.getCookieList()
+            } else {
+                CookieExtractor.extractCookies(targetUrl)
+            }
 
-        setupFormatChips(host)
-        setupSearch()
+            b.chipCount.text = "${cookieList.size} 项"
 
-        binding.btnCopyAll.setOnClickListener {
-            copyCurrentFormat(host)
-        }
+            if (cookieList.isEmpty()) {
+                b.tvEmptyHint.visibility = View.VISIBLE
+                b.rvCookies.visibility = View.GONE
+                b.scrollCodeView.visibility = View.GONE
+                b.btnCopyAll.isEnabled = false
+                b.btnSaveStorage.isEnabled = false
+            } else {
+                b.tvEmptyHint.visibility = View.GONE
+                newAdapter.setData(cookieList)
+                b.btnCopyAll.isEnabled = true
+                b.btnSaveStorage.isEnabled = true
+            }
 
-        binding.btnSaveStorage.setOnClickListener {
-            saveToVault(host)
+            setupFormatChips(host)
+            setupSearch()
+
+            b.btnCopyAll.setOnClickListener {
+                copyCurrentFormat(host)
+            }
+
+            b.btnSaveStorage.setOnClickListener {
+                saveToVault(host)
+            }
         }
     }
 
@@ -132,61 +136,64 @@ class CookieBottomSheetDialog : BottomSheetDialogFragment() {
     }
 
     private fun setupSearch() {
-        binding.etSearchCookie.addTextChangedListener(object : TextWatcher {
+        binding?.etSearchCookie?.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                adapter.filter(s?.toString() ?: "")
+                adapter?.filter(s?.toString() ?: "")
             }
             override fun afterTextChanged(s: Editable?) {}
         })
     }
 
     private fun setupFormatChips(host: String) {
-        binding.chipGroupFormats.setOnCheckedStateChangeListener { _, checkedIds ->
+        binding?.chipGroupFormats?.setOnCheckedStateChangeListener { _, checkedIds ->
             if (checkedIds.isEmpty()) return@setOnCheckedStateChangeListener
 
+            val b = binding ?: return@setOnCheckedStateChangeListener
             when (checkedIds[0]) {
                 R.id.chipFormatList -> {
                     currentMode = Mode.LIST
-                    binding.rvCookies.visibility = View.VISIBLE
-                    binding.layoutSearch.visibility = View.VISIBLE
-                    binding.scrollCodeView.visibility = View.GONE
-                    binding.btnCopyAll.text = "一键复制全部 Cookie (Header)"
+                    b.rvCookies.visibility = View.VISIBLE
+                    b.layoutSearch.visibility = View.VISIBLE
+                    b.scrollCodeView.visibility = View.GONE
+                    b.btnCopyAll.text = "一键复制全部 Cookie (Header)"
                 }
                 R.id.chipFormatHeader -> {
                     currentMode = Mode.HEADER
                     showTextView(CookieFormatter.toHeaderString(cookieList))
-                    binding.btnCopyAll.text = "复制 Header 字符串"
+                    b.btnCopyAll.text = "复制 Header 字符串"
                 }
                 R.id.chipFormatJson -> {
                     currentMode = Mode.JSON
                     showTextView(CookieFormatter.toJson(cookieList))
-                    binding.btnCopyAll.text = "复制结构化 JSON"
+                    b.btnCopyAll.text = "复制结构化 JSON"
                 }
                 R.id.chipFormatNetscape -> {
                     currentMode = Mode.NETSCAPE
                     showTextView(CookieFormatter.toNetscape(cookieList, host))
-                    binding.btnCopyAll.text = "复制 Netscape cookies.txt"
+                    b.btnCopyAll.text = "复制 Netscape cookies.txt"
                 }
                 R.id.chipFormatPython -> {
                     currentMode = Mode.PYTHON
                     showTextView(CookieFormatter.toPythonSnippet(cookieList, targetUrl, currentUserAgent))
-                    binding.btnCopyAll.text = "复制 Python 爬虫脚本"
+                    b.btnCopyAll.text = "复制 Python 爬虫脚本"
                 }
                 R.id.chipFormatCurl -> {
                     currentMode = Mode.CURL
                     showTextView(CookieFormatter.toCurlCommand(cookieList, targetUrl, currentUserAgent))
-                    binding.btnCopyAll.text = "复制 cURL 命令"
+                    b.btnCopyAll.text = "复制 cURL 命令"
                 }
             }
         }
     }
 
     private fun showTextView(content: String) {
-        binding.rvCookies.visibility = View.GONE
-        binding.layoutSearch.visibility = View.GONE
-        binding.scrollCodeView.visibility = View.VISIBLE
-        binding.tvCodeContent.text = content
+        binding?.let { b ->
+            b.rvCookies.visibility = View.GONE
+            b.layoutSearch.visibility = View.GONE
+            b.scrollCodeView.visibility = View.VISIBLE
+            b.tvCodeContent.text = content
+        }
     }
 
     private fun copyCurrentFormat(host: String) {
@@ -210,6 +217,7 @@ class CookieBottomSheetDialog : BottomSheetDialogFragment() {
     override fun onDestroyView() {
         super.onDestroyView()
         _binding = null
+        adapter = null
     }
 
     companion object {

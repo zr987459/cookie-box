@@ -3,6 +3,7 @@ package com.cookiebox.app
 import android.annotation.SuppressLint
 import android.graphics.Bitmap
 import android.os.Bundle
+import android.os.Message
 import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
@@ -80,6 +81,10 @@ class MainActivity : AppCompatActivity() {
         settings.displayZoomControls = false
         settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
 
+        // 开启多窗口支持与脚本弹窗允许，防止 target="_blank" 或 window.open 闪退
+        settings.setSupportMultipleWindows(true)
+        settings.javaScriptCanOpenWindowsAutomatically = true
+
         val cookieManager = CookieManager.getInstance()
         cookieManager.setAcceptCookie(true)
         cookieManager.setAcceptThirdPartyCookies(webView, true)
@@ -96,8 +101,9 @@ class MainActivity : AppCompatActivity() {
             override fun onReceivedTitle(view: WebView?, title: String?) {
                 if (!title.isNullOrBlank()) {
                     newTab.title = title
-                    if (newTab.id == activeTabId) {
-                        tabsDialog?.setTabsData(tabs, activeTabId)
+                    val dialog = tabsDialog
+                    if (dialog != null && dialog.isAdded && !dialog.isStateSaved) {
+                        dialog.setTabsData(tabs, activeTabId)
                     }
                 }
             }
@@ -110,6 +116,31 @@ class MainActivity : AppCompatActivity() {
                     } else {
                         binding.progressBar.visibility = View.GONE
                     }
+                }
+            }
+
+            // 支持网页内部链接 target="_blank" 或 window.open 打开同网页新窗口
+            override fun onCreateWindow(
+                view: WebView?,
+                isDialog: Boolean,
+                isUserGesture: Boolean,
+                resultMsg: Message?
+            ): Boolean {
+                if (resultMsg == null) return false
+                val spawnedTab = createNewTab(initialUrl = "")
+                val transport = resultMsg.obj as? WebView.WebViewTransport
+                if (transport != null) {
+                    transport.webView = spawnedTab.webView
+                    resultMsg.sendToTarget()
+                    return true
+                }
+                return false
+            }
+
+            override fun onCloseWindow(window: WebView?) {
+                val tabToClose = tabs.find { it.webView == window }
+                if (tabToClose != null) {
+                    closeTab(tabToClose.id)
                 }
             }
         }
@@ -198,7 +229,6 @@ class MainActivity : AppCompatActivity() {
         tabs.removeAt(targetIndex)
 
         if (tabs.isEmpty()) {
-            // 没有标签了，新建一个空的
             createNewTab(initialUrl = "")
         } else {
             if (tabId == activeTabId) {
@@ -209,7 +239,10 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        tabsDialog?.setTabsData(tabs, activeTabId)
+        val dialog = tabsDialog
+        if (dialog != null && dialog.isAdded && !dialog.isStateSaved) {
+            dialog.setTabsData(tabs, activeTabId)
+        }
     }
 
     private fun updateTabBadge() {
@@ -220,7 +253,7 @@ class MainActivity : AppCompatActivity() {
         return tabs.find { it.id == activeTabId }
     }
 
-    // ==================== 页面加载与交互 ====================
+    // ==================== 页面加载与凭据注入直达 ====================
 
     private fun loadUrlInTab(tab: TabItem, input: String) {
         val targetUrl = when {
@@ -236,6 +269,46 @@ class MainActivity : AppCompatActivity() {
             binding.layoutShortcuts.visibility = View.GONE
         }
         tab.webView?.loadUrl(targetUrl)
+    }
+
+    /**
+     * 根据保存的 Cookie 凭据，一键写入 Cookie 并直达该网站登录态
+     */
+    private fun launchWithSavedCookie(record: SavedCookieRecord) {
+        val targetUrl = when {
+            record.url.isNotBlank() -> record.url
+            record.domain.isNotBlank() -> "https://${record.domain}"
+            else -> return
+        }
+
+        val cookieManager = CookieManager.getInstance()
+        cookieManager.setAcceptCookie(true)
+
+        // 将保存的 Cookie 注入到系统的 CookieManager 中
+        val cookies = record.getCookieList()
+        for (item in cookies) {
+            val domainPart = when {
+                item.domain.isNotBlank() -> "; Domain=${item.domain}"
+                record.domain.isNotBlank() -> "; Domain=.${record.domain.trimStart('.')}"
+                else -> ""
+            }
+            val cookieStr = "${item.name}=${item.value}$domainPart; Path=/"
+            cookieManager.setCookie(targetUrl, cookieStr)
+            if (record.domain.isNotBlank()) {
+                cookieManager.setCookie("https://${record.domain}", cookieStr)
+            }
+        }
+        cookieManager.flush()
+
+        // 复用当前空白页，或新建窗口直达
+        val current = getActiveTab()
+        if (current != null && (current.url.isBlank() || current.url == "about:blank")) {
+            loadUrlInTab(current, targetUrl)
+        } else {
+            createNewTab(initialUrl = targetUrl)
+        }
+
+        Toast.makeText(this, "已自动注入 Cookie，正在直达 ${record.domain}", Toast.LENGTH_SHORT).show()
     }
 
     private fun updateSecurityIcon(url: String) {
@@ -342,12 +415,19 @@ class MainActivity : AppCompatActivity() {
         dialog.onNewTabRequested = {
             createNewTab(initialUrl = "")
         }
+        dialog.onDismissListener = {
+            tabsDialog = null
+        }
         dialog.show(supportFragmentManager, "TabsBottomSheet")
         dialog.setTabsData(tabs, activeTabId)
     }
 
     private fun openStorageDialog() {
         val dialog = StorageBottomSheetDialog.newInstance()
+        // 一键直达并注入 Cookie 核心交互
+        dialog.onLaunchRecord = { record ->
+            launchWithSavedCookie(record)
+        }
         dialog.onViewRecordDetails = { record ->
             val ua = getActiveTab()?.webView?.settings?.userAgentString ?: defaultMobileUa
             val detailDialog = CookieBottomSheetDialog.newInstanceFromRecord(record, ua)
@@ -410,7 +490,6 @@ class MainActivity : AppCompatActivity() {
                 } else if (binding.layoutShortcuts.visibility != View.VISIBLE) {
                     binding.layoutShortcuts.visibility = View.VISIBLE
                 } else if (tabs.size > 1) {
-                    // 若有多窗口，后退先提示或关闭当前窗口
                     getActiveTab()?.let { closeTab(it.id) }
                 } else {
                     finish()

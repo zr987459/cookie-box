@@ -10,6 +10,7 @@ import java.util.Date
 import java.util.Locale
 
 class StorageAdapter(
+    private val onLaunchWithCookie: (SavedCookieRecord) -> Unit,
     private val onQuickCopy: (SavedCookieRecord) -> Unit,
     private val onViewDetails: (SavedCookieRecord) -> Unit,
     private val onDelete: (SavedCookieRecord) -> Unit
@@ -63,6 +64,9 @@ class StorageAdapter(
             binding.chipRecordCount.text = "${record.count} 项"
             binding.tvRecordTime.text = "储存时间: ${dateFormat.format(Date(record.timestamp))}"
 
+            binding.btnLaunchWithCookie.setOnClickListener {
+                onLaunchWithCookie(record)
+            }
             binding.btnQuickCopyHeader.setOnClickListener {
                 onQuickCopy(record)
             }

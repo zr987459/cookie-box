@@ -79,9 +79,28 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
+            android:layout_marginTop="12dp"
             android:gravity="center_vertical"
             android:orientation="horizontal">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnLaunchWithCookie"
+                style="@style/Widget.Material3.Button"
+                android:layout_width="0dp"
+                android:layout_height="38dp"
+                android:layout_weight="1.2"
+                android:text="进入网站"
+                android:textColor="@color/on_primary"
+                android:textSize="11sp"
+                app:backgroundTint="@color/primary"
+                app:cornerRadius="12dp"
+                app:icon="@drawable/ic_open_in_browser"
+                app:iconSize="14dp"
+                app:iconTint="@color/on_primary" />
+
+            <Space
+                android:layout_width="6dp"
+                android:layout_height="wrap_content" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnQuickCopyHeader"
@@ -91,12 +110,10 @@
                 android:layout_weight="1"
                 android:text="复制 Header"
                 android:textSize="11sp"
-                app:cornerRadius="12dp"
-                app:icon="@drawable/ic_copy"
-                app:iconSize="14dp" />
+                app:cornerRadius="12dp" />
 
             <Space
-                android:layout_width="8dp"
+                android:layout_width="6dp"
                 android:layout_height="wrap_content" />
 
             <com.google.android.material.button.MaterialButton
@@ -104,8 +121,8 @@
                 style="@style/Widget.Material3.Button.OutlinedButton"
                 android:layout_width="0dp"
                 android:layout_height="38dp"
-                android:layout_weight="1"
-                android:text="详情与多格式"
+                android:layout_weight="0.9"
+                android:text="详情"
                 android:textSize="11sp"
                 app:cornerRadius="12dp" />
         </LinearLayout>

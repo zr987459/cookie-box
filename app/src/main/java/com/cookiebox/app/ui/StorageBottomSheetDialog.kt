@@ -3,6 +3,7 @@ package com.cookiebox.app.ui
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.DialogInterface
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
@@ -22,20 +23,22 @@ import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 class StorageBottomSheetDialog : BottomSheetDialogFragment() {
 
     private var _binding: DialogCookieStorageSheetBinding? = null
-    private val binding get() = _binding!!
+    private val binding get() = _binding
 
     private lateinit var repo: CookieStorageRepository
     private lateinit var adapter: StorageAdapter
 
     var onViewRecordDetails: ((SavedCookieRecord) -> Unit)? = null
+    var onLaunchRecord: ((SavedCookieRecord) -> Unit)? = null
+    var onDismissListener: (() -> Unit)? = null
 
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
         savedInstanceState: Bundle?
-    ): View {
+    ): View? {
         _binding = DialogCookieStorageSheetBinding.inflate(inflater, container, false)
-        return binding.root
+        return _binding?.root
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -44,6 +47,10 @@ class StorageBottomSheetDialog : BottomSheetDialogFragment() {
         repo = CookieStorageRepository(requireContext())
 
         adapter = StorageAdapter(
+            onLaunchWithCookie = { record ->
+                dismiss()
+                onLaunchRecord?.invoke(record)
+            },
             onQuickCopy = { record ->
                 val list = record.getCookieList()
                 val header = CookieFormatter.toHeaderString(list)
@@ -60,27 +67,29 @@ class StorageBottomSheetDialog : BottomSheetDialogFragment() {
             }
         )
 
-        binding.rvStorageRecords.layoutManager = LinearLayoutManager(requireContext())
-        binding.rvStorageRecords.adapter = adapter
+        binding?.let { b ->
+            b.rvStorageRecords.layoutManager = LinearLayoutManager(requireContext())
+            b.rvStorageRecords.adapter = adapter
 
-        setupSearch()
-        refreshData()
+            setupSearch()
+            refreshData()
 
-        binding.btnClearStorage.setOnClickListener {
-            AlertDialog.Builder(requireContext())
-                .setTitle("清空储存库")
-                .setMessage("确定要清空所有已保存的网站 Cookie 记录吗？")
-                .setPositiveButton("清空") { _, _ ->
-                    repo.clearAll()
-                    refreshData()
-                }
-                .setNegativeButton("取消", null)
-                .show()
+            b.btnClearStorage.setOnClickListener {
+                AlertDialog.Builder(requireContext())
+                    .setTitle("清空储存库")
+                    .setMessage("确定要清空所有已保存的网站 Cookie 记录吗？")
+                    .setPositiveButton("清空") { _, _ ->
+                        repo.clearAll()
+                        refreshData()
+                    }
+                    .setNegativeButton("取消", null)
+                    .show()
+            }
         }
     }
 
     private fun setupSearch() {
-        binding.etSearchStorage.addTextChangedListener(object : TextWatcher {
+        binding?.etSearchStorage?.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
                 adapter.filter(s?.toString() ?: "")
@@ -91,16 +100,18 @@ class StorageBottomSheetDialog : BottomSheetDialogFragment() {
 
     private fun refreshData() {
         val list = repo.getAllRecords()
-        binding.tvStorageSubtitle.text = "已持久保存 ${list.size} 个网站凭据"
-        if (list.isEmpty()) {
-            binding.tvEmptyStorage.visibility = View.VISIBLE
-            binding.rvStorageRecords.visibility = View.GONE
-            binding.btnClearStorage.visibility = View.GONE
-        } else {
-            binding.tvEmptyStorage.visibility = View.GONE
-            binding.rvStorageRecords.visibility = View.VISIBLE
-            binding.btnClearStorage.visibility = View.VISIBLE
-            adapter.submitList(list)
+        binding?.let { b ->
+            b.tvStorageSubtitle.text = "已持久保存 ${list.size} 个网站凭据"
+            if (list.isEmpty()) {
+                b.tvEmptyStorage.visibility = View.VISIBLE
+                b.rvStorageRecords.visibility = View.GONE
+                b.btnClearStorage.visibility = View.GONE
+            } else {
+                b.tvEmptyStorage.visibility = View.GONE
+                b.rvStorageRecords.visibility = View.VISIBLE
+                b.btnClearStorage.visibility = View.VISIBLE
+                adapter.submitList(list)
+            }
         }
     }
 
@@ -109,6 +120,11 @@ class StorageBottomSheetDialog : BottomSheetDialogFragment() {
         val clip = ClipData.newPlainText(label, text)
         clipboard.setPrimaryClip(clip)
         Toast.makeText(requireContext(), R.string.copied_to_clipboard, Toast.LENGTH_SHORT).show()
+    }
+
+    override fun onDismiss(dialog: DialogInterface) {
+        super.onDismiss(dialog)
+        onDismissListener?.invoke()
     }
 
     override fun onDestroyView() {
