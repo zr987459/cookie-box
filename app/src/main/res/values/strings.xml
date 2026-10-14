@@ -1,0 +1,21 @@
+<resources>
+    <string name="app_name">CookieBox</string>
+    <string name="search_or_enter_url">输入网址或搜索内容...</string>
+    <string name="extract_cookies">提取 Cookie</string>
+    <string name="cookie_count_format">共发现 %d 个 Cookie 凭据</string>
+    <string name="empty_cookie_tip">当前页面暂未获取到 Cookie，请先在网页中正常登录账号。</string>
+    <string name="copy_header">复制 Header</string>
+    <string name="copy_json">导出 JSON</string>
+    <string name="copy_netscape">Netscape</string>
+    <string name="copy_curl">复制 cURL</string>
+    <string name="copy_python">Python 脚本</string>
+    <string name="copied_to_clipboard">已成功复制到剪贴板！</string>
+    <string name="clear_all_cookies">清空网站全部 Cookie</string>
+    <string name="clear_confirm_message">确定要清除当前全部 Cookie 和浏览缓存吗？这会登出当前所有账号。</string>
+    <string name="clear_success">已成功清空所有 Cookie 与缓存！</string>
+    <string name="switch_desktop">切换桌面版 UA</string>
+    <string name="switch_mobile">切换手机版 UA</string>
+    <string name="current_ua_desktop">当前模式: PC 桌面版</string>
+    <string name="current_ua_mobile">当前模式: 手机移动端</string>
+    <string name="search_hint">搜索 Cookie 名称或值...</string>
+</resources>

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Brand Cookie Tones -->
+    <color name="primary">#8D5B29</color>
+    <color name="on_primary">#FFFFFF</color>
+    <color name="primary_container">#FFDDB6</color>
+    <color name="on_primary_container">#2F1500</color>
+
+    <color name="secondary">#705B40</color>
+    <color name="on_secondary">#FFFFFF</color>
+    <color name="secondary_container">#FCDFA6</color>
+    <color name="on_secondary_container">#261A00</color>
+
+    <color name="background">#FFF8F5</color>
+    <color name="on_background">#211A15</color>
+    <color name="surface">#FFF8F5</color>
+    <color name="on_surface">#211A15</color>
+    <color name="surface_variant">#F0E0D0</color>
+    <color name="on_surface_variant">#4F4539</color>
+
+    <!-- Functional Colors -->
+    <color name="cookie_chip_bg">#FFF3E0</color>
+    <color name="cookie_chip_text">#E65100</color>
+    <color name="code_bg">#1E1E1E</color>
+    <color name="code_text">#D4D4D4</color>
+    <color name="divider">#E0D5C9</color>
+    <color name="success">#2E7D32</color>
+    <color name="danger">#C62828</color>
+</resources>
