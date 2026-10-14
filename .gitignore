@@ -12,5 +12,6 @@
 .cxx
 local.properties
 app/build/
+/dist/
 *.apk
 *.aab
