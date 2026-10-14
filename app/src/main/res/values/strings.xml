@@ -1,7 +1,7 @@
 <resources>
     <string name="app_name">CookieBox</string>
     <string name="search_or_enter_url">输入网址或搜索内容...</string>
-    <string name="extract_cookies">提取 Cookie</string>
+    <string name="extract_cookies">提取</string>
     <string name="cookie_count_format">共发现 %d 个 Cookie 凭据</string>
     <string name="empty_cookie_tip">当前页面暂未获取到 Cookie，请先在网页中正常登录账号。</string>
     <string name="copy_header">复制 Header</string>
@@ -15,7 +15,18 @@
     <string name="clear_success">已成功清空所有 Cookie 与缓存！</string>
     <string name="switch_desktop">切换桌面版 UA</string>
     <string name="switch_mobile">切换手机版 UA</string>
-    <string name="current_ua_desktop">当前模式: PC 桌面版</string>
-    <string name="current_ua_mobile">当前模式: 手机移动端</string>
+    <string name="current_ua_desktop">已切换为 PC 桌面版 UA</string>
+    <string name="current_ua_mobile">已切换为 手机移动端 UA</string>
     <string name="search_hint">搜索 Cookie 名称或值...</string>
+    
+    <!-- 多窗口与储存管理 -->
+    <string name="tabs_manager">标签页管理</string>
+    <string name="new_tab">新建标签页</string>
+    <string name="close_tab">关闭标签页</string>
+    <string name="storage_vault">Cookie 储存库</string>
+    <string name="save_to_storage">保存至储存库</string>
+    <string name="saved_success">已成功保存至本地 Cookie 储存库！</string>
+    <string name="record_deleted">已删除该条储存记录</string>
+    <string name="empty_storage_tip">暂无储存的 Cookie 记录。\n在提取面板点击「保存至储存库」即可将常用网站凭据永久留存。</string>
+    <string name="search_storage_hint">搜索已存域名或网站标题...</string>
 </resources>

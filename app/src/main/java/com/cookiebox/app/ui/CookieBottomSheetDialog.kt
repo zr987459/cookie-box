@@ -16,8 +16,11 @@ import com.cookiebox.app.R
 import com.cookiebox.app.databinding.DialogCookieSheetBinding
 import com.cookiebox.app.engine.CookieExtractor
 import com.cookiebox.app.engine.CookieFormatter
+import com.cookiebox.app.engine.CookieStorageRepository
 import com.cookiebox.app.model.CookieItem
+import com.cookiebox.app.model.SavedCookieRecord
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
+import java.util.UUID
 
 class CookieBottomSheetDialog : BottomSheetDialogFragment() {
 
@@ -25,7 +28,9 @@ class CookieBottomSheetDialog : BottomSheetDialogFragment() {
     private val binding get() = _binding!!
 
     private var targetUrl: String = ""
+    private var webTitle: String = ""
     private var currentUserAgent: String = ""
+    private var preloadedJson: String? = null
     private var cookieList: List<CookieItem> = emptyList()
     private lateinit var adapter: CookieAdapter
 
@@ -37,7 +42,9 @@ class CookieBottomSheetDialog : BottomSheetDialogFragment() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         targetUrl = arguments?.getString(ARG_URL) ?: ""
+        webTitle = arguments?.getString(ARG_TITLE) ?: ""
         currentUserAgent = arguments?.getString(ARG_UA) ?: ""
+        preloadedJson = arguments?.getString(ARG_JSON)
     }
 
     override fun onCreateView(
@@ -57,7 +64,7 @@ class CookieBottomSheetDialog : BottomSheetDialogFragment() {
         } catch (e: Exception) {
             targetUrl
         }
-        binding.tvSheetSubtitle.text = if (host.isNotBlank()) host else "未载入网页"
+        binding.tvSheetSubtitle.text = if (host.isNotBlank()) host else "当前页面"
 
         // 初始化 RecyclerView 与适配器
         adapter = CookieAdapter { item ->
@@ -66,8 +73,21 @@ class CookieBottomSheetDialog : BottomSheetDialogFragment() {
         binding.rvCookies.layoutManager = LinearLayoutManager(requireContext())
         binding.rvCookies.adapter = adapter
 
-        // 提取数据
-        cookieList = CookieExtractor.extractCookies(targetUrl)
+        // 提取或载入数据
+        cookieList = if (!preloadedJson.isNullOrBlank()) {
+            val record = SavedCookieRecord(
+                id = "",
+                title = webTitle,
+                domain = host,
+                url = targetUrl,
+                cookieJson = preloadedJson!!,
+                count = 0
+            )
+            record.getCookieList()
+        } else {
+            CookieExtractor.extractCookies(targetUrl)
+        }
+
         binding.chipCount.text = "${cookieList.size} 项"
 
         if (cookieList.isEmpty()) {
@@ -75,10 +95,12 @@ class CookieBottomSheetDialog : BottomSheetDialogFragment() {
             binding.rvCookies.visibility = View.GONE
             binding.scrollCodeView.visibility = View.GONE
             binding.btnCopyAll.isEnabled = false
+            binding.btnSaveStorage.isEnabled = false
         } else {
             binding.tvEmptyHint.visibility = View.GONE
             adapter.setData(cookieList)
             binding.btnCopyAll.isEnabled = true
+            binding.btnSaveStorage.isEnabled = true
         }
 
         setupFormatChips(host)
@@ -87,6 +109,26 @@ class CookieBottomSheetDialog : BottomSheetDialogFragment() {
         binding.btnCopyAll.setOnClickListener {
             copyCurrentFormat(host)
         }
+
+        binding.btnSaveStorage.setOnClickListener {
+            saveToVault(host)
+        }
+    }
+
+    private fun saveToVault(host: String) {
+        if (cookieList.isEmpty()) return
+        val repo = CookieStorageRepository(requireContext())
+        val record = SavedCookieRecord(
+            id = UUID.randomUUID().toString(),
+            title = if (webTitle.isNotBlank()) webTitle else host,
+            domain = host,
+            url = targetUrl,
+            cookieJson = CookieFormatter.toJson(cookieList),
+            count = cookieList.size,
+            timestamp = System.currentTimeMillis()
+        )
+        repo.saveRecord(record)
+        Toast.makeText(requireContext(), R.string.saved_success, Toast.LENGTH_SHORT).show()
     }
 
     private fun setupSearch() {
@@ -172,13 +214,28 @@ class CookieBottomSheetDialog : BottomSheetDialogFragment() {
 
     companion object {
         private const val ARG_URL = "arg_url"
+        private const val ARG_TITLE = "arg_title"
         private const val ARG_UA = "arg_ua"
+        private const val ARG_JSON = "arg_json"
 
-        fun newInstance(url: String, userAgent: String): CookieBottomSheetDialog {
+        fun newInstance(url: String, title: String, userAgent: String): CookieBottomSheetDialog {
             val dialog = CookieBottomSheetDialog()
             val args = Bundle().apply {
                 putString(ARG_URL, url)
+                putString(ARG_TITLE, title)
                 putString(ARG_UA, userAgent)
+            }
+            dialog.arguments = args
+            return dialog
+        }
+
+        fun newInstanceFromRecord(record: SavedCookieRecord, userAgent: String): CookieBottomSheetDialog {
+            val dialog = CookieBottomSheetDialog()
+            val args = Bundle().apply {
+                putString(ARG_URL, record.url)
+                putString(ARG_TITLE, record.title)
+                putString(ARG_UA, userAgent)
+                putString(ARG_JSON, record.cookieJson)
             }
             dialog.arguments = args
             return dialog

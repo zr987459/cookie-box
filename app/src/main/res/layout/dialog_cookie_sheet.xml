@@ -151,7 +151,7 @@
     <!-- 内容展示容器 (列表 / 文本) -->
     <FrameLayout
         android:layout_width="match_parent"
-        android:layout_height="320dp"
+        android:layout_height="300dp"
         android:layout_marginTop="8dp">
 
         <!-- 1. 卡片列表视图 -->
@@ -203,6 +203,18 @@
         android:layout_marginTop="12dp"
         android:gravity="center_vertical"
         android:orientation="horizontal">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnSaveStorage"
+            style="@style/Widget.Material3.Button.TonalButton"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:layout_marginEnd="8dp"
+            android:text="存入库"
+            android:textColor="@color/primary"
+            app:cornerRadius="24dp"
+            app:icon="@drawable/ic_save"
+            app:iconTint="@color/primary" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnCopyAll"
