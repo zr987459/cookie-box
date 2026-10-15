@@ -705,6 +705,7 @@ class MainActivity : AppCompatActivity() {
                     writeList.add(Pair(domainUrl, "${item.name}=${item.value}; Domain=.$rootDomain; Path=/$secureAttr"))
                 }
             }
+        }
 
         pendingCount = writeList.size
 
