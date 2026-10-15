@@ -43,6 +43,12 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private const val DESKTOP_UA =
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+
+        private fun cleanUserAgent(raw: String): String {
+            // 剥除 Android WebView 专有的 Version/4.0 和 ; wv 标记，模拟官方纯净 Chrome，避免触发 Google 等站点的 CookieMismatch 拦截
+            return raw.replace("; wv", "")
+                .replace("Version/4.0 ", "")
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -72,8 +78,9 @@ class MainActivity : AppCompatActivity() {
 
         val settings = webView.settings
         if (defaultMobileUa.isEmpty()) {
-            defaultMobileUa = settings.userAgentString
+            defaultMobileUa = cleanUserAgent(settings.userAgentString)
         }
+        settings.userAgentString = defaultMobileUa
 
         settings.javaScriptEnabled = true
         settings.domStorageEnabled = true
@@ -83,6 +90,8 @@ class MainActivity : AppCompatActivity() {
         settings.setSupportZoom(true)
         settings.builtInZoomControls = true
         settings.displayZoomControls = false
+        settings.allowFileAccess = true
+        settings.allowContentAccess = true
         settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
 
         // 开启多窗口支持与脚本弹窗代理，适配 target="_blank"
@@ -201,6 +210,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupProfileForTab(tab: TabItem, webView: WebView) {
+        val globalCm = CookieManager.getInstance()
+        globalCm.setAcceptCookie(true)
+        globalCm.setAcceptThirdPartyCookies(webView, true)
+
         if (WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) {
             try {
                 val profileStore = ProfileStore.getInstance()
@@ -209,13 +222,13 @@ class MainActivity : AppCompatActivity() {
                 tab.customCookieManager = profile.cookieManager
             } catch (e: Exception) {
                 e.printStackTrace()
-                tab.customCookieManager = CookieManager.getInstance()
+                tab.customCookieManager = globalCm
             }
         } else {
-            tab.customCookieManager = CookieManager.getInstance()
+            tab.customCookieManager = globalCm
         }
 
-        val cm = tab.customCookieManager ?: CookieManager.getInstance()
+        val cm = tab.customCookieManager ?: globalCm
         cm.setAcceptCookie(true)
         cm.setAcceptThirdPartyCookies(webView, true)
     }
@@ -361,7 +374,10 @@ class MainActivity : AppCompatActivity() {
                 writeList.add(Pair(cleanEntryUrl, baseCookie))
 
                 // 根域名注入（保证子域和 API 均可携带，如 hark.com / bilibili.com）
-                if (rootDomain.isNotEmpty()) {
+                // 排除 accounts.google. 等高敏子域，防止因作用域冲突触发 Google CookieMismatch 拦截
+                val isStrictSubdomain = record.domain.startsWith("accounts.google.") ||
+                        record.domain.startsWith("login.")
+                if (rootDomain.isNotEmpty() && !isStrictSubdomain) {
                     val domainCookie = "${item.name}=${item.value}; Domain=.$rootDomain; Path=/$secureAttr"
                     writeList.add(Pair(domainUrl, domainCookie))
                 }
