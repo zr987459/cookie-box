@@ -1,10 +1,14 @@
 package com.cookiebox.app.ui
 
 import android.view.LayoutInflater
+import android.view.View
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
+import com.cookiebox.app.databinding.ItemStorageAccountRowBinding
 import com.cookiebox.app.databinding.ItemStorageRecordBinding
+import com.cookiebox.app.engine.DomainUtils
 import com.cookiebox.app.model.SavedCookieRecord
+import com.cookiebox.app.model.WebsiteGroup
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -17,7 +21,7 @@ class StorageAdapter(
 ) : RecyclerView.Adapter<StorageAdapter.StorageViewHolder>() {
 
     private val allRecords = mutableListOf<SavedCookieRecord>()
-    private val displayRecords = mutableListOf<SavedCookieRecord>()
+    private val displayGroups = mutableListOf<WebsiteGroup>()
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
 
     fun submitList(items: List<SavedCookieRecord>) {
@@ -27,17 +31,32 @@ class StorageAdapter(
     }
 
     fun filter(query: String) {
-        displayRecords.clear()
-        if (query.isBlank()) {
-            displayRecords.addAll(allRecords)
+        displayGroups.clear()
+        val filteredRecords = if (query.isBlank()) {
+            allRecords
         } else {
             val q = query.lowercase().trim()
-            displayRecords.addAll(allRecords.filter {
+            allRecords.filter {
                 it.domain.lowercase().contains(q) ||
                 it.title.lowercase().contains(q) ||
                 it.url.lowercase().contains(q)
-            })
+            }
         }
+
+        // 按网站顶级根域名自动归类合并到同一卡片
+        val groupMap = LinkedHashMap<String, WebsiteGroup>()
+        for (record in filteredRecords) {
+            val root = DomainUtils.getRootDomain(record.domain).ifEmpty { record.domain }
+            val group = groupMap.getOrPut(root) {
+                WebsiteGroup(
+                    domain = if (record.domain.isNotEmpty()) record.domain else root,
+                    rootDomain = root
+                )
+            }
+            group.accounts.add(record)
+        }
+
+        displayGroups.addAll(groupMap.values)
         notifyDataSetChanged()
     }
 
@@ -49,32 +68,53 @@ class StorageAdapter(
     }
 
     override fun onBindViewHolder(holder: StorageViewHolder, position: Int) {
-        holder.bind(displayRecords[position])
+        holder.bind(displayGroups[position])
     }
 
-    override fun getItemCount(): Int = displayRecords.size
+    override fun getItemCount(): Int = displayGroups.size
 
     inner class StorageViewHolder(
         private val binding: ItemStorageRecordBinding
     ) : RecyclerView.ViewHolder(binding.root) {
 
-        fun bind(record: SavedCookieRecord) {
-            binding.tvRecordDomain.text = if (record.domain.isNotEmpty()) record.domain else "未知域名"
-            binding.tvRecordTitle.text = if (record.title.isNotEmpty()) record.title else record.url
-            binding.chipRecordCount.text = "${record.count} 项"
-            binding.tvRecordTime.text = "储存时间: ${dateFormat.format(Date(record.timestamp))}"
+        fun bind(group: WebsiteGroup) {
+            val displayDomain = if (group.rootDomain.isNotEmpty()) group.rootDomain else group.domain
+            binding.tvWebsiteDomain.text = displayDomain
+            binding.chipAccountsCount.text = "${group.accounts.size} 个账号"
 
-            binding.btnLaunchWithCookie.setOnClickListener {
-                onLaunchWithCookie(record)
-            }
-            binding.btnQuickCopyHeader.setOnClickListener {
-                onQuickCopy(record)
-            }
-            binding.btnViewDetails.setOnClickListener {
-                onViewDetails(record)
-            }
-            binding.btnDeleteRecord.setOnClickListener {
-                onDelete(record)
+            // 动态填充该网站下的所有账号行
+            binding.layoutAccountsContainer.removeAllViews()
+            val inflater = LayoutInflater.from(binding.root.context)
+
+            group.accounts.forEachIndexed { index, account ->
+                val rowBinding = ItemStorageAccountRowBinding.inflate(
+                    inflater, binding.layoutAccountsContainer, false
+                )
+
+                rowBinding.tvAccountName.text = if (account.title.isNotBlank()) account.title else "账号 ${index + 1}"
+                rowBinding.chipAccountCookies.text = "${account.count} 项"
+                rowBinding.tvAccountTime.text = "储存时间: ${dateFormat.format(Date(account.timestamp))}"
+
+                // 最后一个账号隐藏底部分割线
+                rowBinding.dividerAccount.visibility = if (index == group.accounts.size - 1) View.GONE else View.VISIBLE
+
+                rowBinding.btnLaunchAccount.setOnClickListener {
+                    onLaunchWithCookie(account)
+                }
+
+                rowBinding.btnCopyAccount.setOnClickListener {
+                    onQuickCopy(account)
+                }
+
+                rowBinding.btnDetailsAccount.setOnClickListener {
+                    onViewDetails(account)
+                }
+
+                rowBinding.btnDeleteAccount.setOnClickListener {
+                    onDelete(account)
+                }
+
+                binding.layoutAccountsContainer.addView(rowBinding.root)
             }
         }
     }
