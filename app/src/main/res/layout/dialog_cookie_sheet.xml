@@ -58,6 +58,20 @@
             android:text="0 项"
             app:chipBackgroundColor="@color/primary_container"
             app:chipStrokeWidth="0dp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnTopQuickCopy"
+            style="@style/Widget.Material3.Button.TonalButton"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:layout_marginStart="8dp"
+            android:minWidth="0dp"
+            android:paddingHorizontal="10dp"
+            android:text="复制全串"
+            android:textSize="12sp"
+            app:cornerRadius="12dp"
+            app:icon="@drawable/ic_copy"
+            app:iconSize="14dp" />
     </LinearLayout>
 
     <!-- 实时搜索输入框 -->
@@ -221,7 +235,7 @@
             android:layout_width="0dp"
             android:layout_height="48dp"
             android:layout_weight="1"
-            android:text="一键复制当前格式"
+            android:text="一键复制全部 Cookie (Header)"
             android:textColor="@color/on_primary"
             app:backgroundTint="@color/primary"
             app:cornerRadius="24dp"

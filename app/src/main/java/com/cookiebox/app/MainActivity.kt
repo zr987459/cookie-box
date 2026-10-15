@@ -19,7 +19,6 @@ import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import com.cookiebox.app.databinding.ActivityMainBinding
-import com.cookiebox.app.engine.CookieExtractor
 import com.cookiebox.app.engine.DomainUtils
 import com.cookiebox.app.model.SavedCookieRecord
 import com.cookiebox.app.model.TabItem
@@ -49,17 +48,17 @@ class MainActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         // 默认新建一个初始标签页
-        createNewTab(initialUrl = "", isIsolated = false)
+        createNewTab(initialUrl = "")
 
         setupListeners()
         setupShortcuts()
         setupBackNavigation()
     }
 
-    // ==================== 多窗口标签管理 (支持多账号隔离多开) ====================
+    // ==================== 多窗口标签管理 (标准 Chromium 多标签机制，零会话丢失) ====================
 
     @SuppressLint("SetJavaScriptEnabled")
-    private fun createNewTab(initialUrl: String = "", isIsolated: Boolean = false): TabItem {
+    private fun createNewTab(initialUrl: String = ""): TabItem {
         val tabId = UUID.randomUUID().toString()
         val webView = WebView(this).apply {
             layoutParams = ViewGroup.LayoutParams(
@@ -83,7 +82,7 @@ class MainActivity : AppCompatActivity() {
         settings.displayZoomControls = false
         settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
 
-        // 开启多窗口支持与脚本弹窗允许，防止 target="_blank" 或 window.open 闪退
+        // 开启多窗口支持与弹窗代理，适配 target="_blank"
         settings.setSupportMultipleWindows(true)
         settings.javaScriptCanOpenWindowsAutomatically = true
 
@@ -93,19 +92,11 @@ class MainActivity : AppCompatActivity() {
 
         val newTab = TabItem(
             id = tabId,
-            title = if (isIsolated) "多开小号标签" else "新标签页",
+            title = "新标签页",
             url = initialUrl,
             isDesktop = false,
-            isIsolated = isIsolated,
             webView = webView
         )
-
-        // 如果是新建独立多开标签，清空当前的 CookieManager，使其处于完全纯净未登录状态
-        if (isIsolated) {
-            cookieManager.removeAllCookies {
-                cookieManager.flush()
-            }
-        }
 
         webView.webChromeClient = object : WebChromeClient() {
             override fun onReceivedTitle(view: WebView?, title: String?) {
@@ -129,7 +120,6 @@ class MainActivity : AppCompatActivity() {
                 }
             }
 
-            // 支持网页内部链接 target="_blank" 或 window.open 打开同网页新窗口
             override fun onCreateWindow(
                 view: WebView?,
                 isDialog: Boolean,
@@ -137,7 +127,7 @@ class MainActivity : AppCompatActivity() {
                 resultMsg: Message?
             ): Boolean {
                 if (resultMsg == null) return false
-                val spawnedTab = createNewTab(initialUrl = "", isIsolated = false)
+                val spawnedTab = createNewTab(initialUrl = "")
                 val transport = resultMsg.obj as? WebView.WebViewTransport
                 if (transport != null) {
                     transport.webView = spawnedTab.webView
@@ -200,31 +190,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun switchTab(targetTabId: String) {
-        val currentTab = getActiveTab()
         val targetTab = tabs.find { it.id == targetTabId } ?: return
-
-        // 1. 若当前标签有访问记录，为其快照存储当前 Cookie
-        if (currentTab != null && currentTab.url.isNotBlank()) {
-            val cookies = CookieExtractor.extractCookies(currentTab.url)
-            currentTab.savedCookies = cookies.associate { it.name to it.value }
-        }
-
         activeTabId = targetTabId
 
-        // 2. 如果任一标签为独立多开标签，执行 Cookie 沙盒切换，恢复目标标签独立的会话
-        val cookieManager = CookieManager.getInstance()
-        if (targetTab.isIsolated || currentTab?.isIsolated == true) {
-            cookieManager.removeAllCookies {
-                if (targetTab.savedCookies.isNotEmpty()) {
-                    injectCookieMap(targetTab.url, targetTab.savedCookies) {
-                        cookieManager.flush()
-                    }
-                } else {
-                    cookieManager.flush()
-                }
-            }
-        }
-
+        // 仅切换可见视图容器，绝不清除 Cookie，保持所有标签会话长效登录！
         binding.layoutWebContainer.removeAllViews()
         targetTab.webView?.let {
             if (it.parent != null) {
@@ -242,7 +211,6 @@ class MainActivity : AppCompatActivity() {
             binding.layoutShortcuts.visibility = View.VISIBLE
         }
 
-        // 更新 UA 按钮图标
         if (targetTab.isDesktop) {
             binding.btnSwitchUa.setImageResource(R.drawable.ic_mobile)
         } else {
@@ -250,22 +218,6 @@ class MainActivity : AppCompatActivity() {
         }
 
         updateTabBadge()
-    }
-
-    private fun injectCookieMap(url: String, map: Map<String, String>, onDone: () -> Unit) {
-        if (map.isEmpty() || url.isBlank()) {
-            onDone()
-            return
-        }
-        val cookieManager = CookieManager.getInstance()
-        var remaining = map.size
-        for ((k, v) in map) {
-            val cookieString = "$k=$v; Path=/"
-            cookieManager.setCookie(url, cookieString) {
-                remaining--
-                if (remaining <= 0) onDone()
-            }
-        }
     }
 
     private fun closeTab(tabId: String) {
@@ -277,7 +229,7 @@ class MainActivity : AppCompatActivity() {
         tabs.removeAt(targetIndex)
 
         if (tabs.isEmpty()) {
-            createNewTab(initialUrl = "", isIsolated = false)
+            createNewTab(initialUrl = "")
         } else {
             if (tabId == activeTabId) {
                 val nextIndex = if (targetIndex >= tabs.size) tabs.size - 1 else targetIndex
@@ -301,7 +253,7 @@ class MainActivity : AppCompatActivity() {
         return tabs.find { it.id == activeTabId }
     }
 
-    // ==================== 页面加载与凭据注入直达 ====================
+    // ==================== 页面加载与一键免密直达 ====================
 
     private fun loadUrlInTab(tab: TabItem, input: String) {
         val targetUrl = when {
@@ -320,7 +272,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * 根据保存的 Cookie 凭据，一键写入 Cookie 并直达该网站登录态 (彻底解决登录页拦截与异步同步问题)
+     * 根据保存的 Cookie 凭据，一键写入 Cookie 并直达该网站登录态 (彻底解决进入失败与死锁问题)
      */
     private fun launchWithSavedCookie(record: SavedCookieRecord) {
         val cleanEntryUrl = DomainUtils.getCleanEntryUrl(record.url, record.domain)
@@ -335,34 +287,28 @@ class MainActivity : AppCompatActivity() {
         val cookieManager = CookieManager.getInstance()
         cookieManager.setAcceptCookie(true)
 
-        // 双层注入：针对 entryUrl 以及根域名分别注入全量 Cookie，确保主站与子域皆可读取
-        var pending = cookies.size * 2
-        val onSingleDone = {
-            pending--
-            if (pending <= 0) {
-                cookieManager.flush()
-                // 确保在主线程并在下一帧执行加载，给 Chromium 内核协议栈足够的异步写入时间
-                binding.root.post {
-                    val current = getActiveTab()
-                    if (current != null && (current.url.isBlank() || current.url == "about:blank")) {
-                        loadUrlInTab(current, cleanEntryUrl)
-                    } else {
-                        createNewTab(initialUrl = cleanEntryUrl, isIsolated = false)
-                    }
-                    Toast.makeText(this@MainActivity, "已注入 Cookie 凭据，正在免密直达 ${record.domain}", Toast.LENGTH_SHORT).show()
-                }
+        // 直接写入到目标 URL 以及根域名，避免异步计数器被中断导致无法跳转
+        for (item in cookies) {
+            val baseCookie = "${item.name}=${item.value}; Path=/"
+            cookieManager.setCookie(cleanEntryUrl, baseCookie)
+
+            if (rootDomain.isNotBlank()) {
+                val domainCookie = "${item.name}=${item.value}; Domain=.$rootDomain; Path=/"
+                cookieManager.setCookie("https://$rootDomain", domainCookie)
+                cookieManager.setCookie(cleanEntryUrl, domainCookie)
             }
         }
+        cookieManager.flush()
 
-        val domainUrl = if (rootDomain.isNotEmpty()) "https://$rootDomain" else cleanEntryUrl
-
-        for (item in cookies) {
-            val domainPart = if (rootDomain.isNotEmpty()) "; Domain=.$rootDomain" else ""
-            val cookieStr = "${item.name}=${item.value}$domainPart; Path=/"
-
-            cookieManager.setCookie(cleanEntryUrl, cookieStr) { onSingleDone() }
-            cookieManager.setCookie(domainUrl, cookieStr) { onSingleDone() }
+        // 立即跳转至目标网站，零阻塞！
+        val current = getActiveTab()
+        if (current != null && (current.url.isBlank() || current.url == "about:blank")) {
+            loadUrlInTab(current, cleanEntryUrl)
+        } else {
+            createNewTab(initialUrl = cleanEntryUrl)
         }
+
+        Toast.makeText(this, "已写入 Cookie，正在免密直达 ${record.domain}", Toast.LENGTH_SHORT).show()
     }
 
     private fun updateSecurityIcon(url: String) {
@@ -466,8 +412,8 @@ class MainActivity : AppCompatActivity() {
         dialog.onTabClosed = { tabId ->
             closeTab(tabId)
         }
-        dialog.onNewTabRequested = { isIsolated ->
-            createNewTab(initialUrl = "", isIsolated = isIsolated)
+        dialog.onNewTabRequested = { _ ->
+            createNewTab(initialUrl = "")
         }
         dialog.onDismissListener = {
             tabsDialog = null
@@ -511,7 +457,6 @@ class MainActivity : AppCompatActivity() {
                     tabs.forEach {
                         it.webView?.clearCache(true)
                         it.webView?.clearHistory()
-                        it.savedCookies = emptyMap()
                     }
                     Toast.makeText(this, R.string.clear_success, Toast.LENGTH_SHORT).show()
                 }

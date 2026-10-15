@@ -106,16 +106,26 @@ class CookieBottomSheetDialog : BottomSheetDialogFragment() {
                 b.scrollCodeView.visibility = View.GONE
                 b.btnCopyAll.isEnabled = false
                 b.btnSaveStorage.isEnabled = false
+                b.btnTopQuickCopy.isEnabled = false
             } else {
                 b.tvEmptyHint.visibility = View.GONE
                 newAdapter.setData(cookieList)
                 b.btnCopyAll.isEnabled = true
                 b.btnSaveStorage.isEnabled = true
+                b.btnTopQuickCopy.isEnabled = true
             }
 
             setupFormatChips(host)
             setupSearch()
 
+            // 顶部快捷一键复制全部 Header
+            b.btnTopQuickCopy.setOnClickListener {
+                val header = CookieFormatter.toHeaderString(cookieList)
+                copyToClipboard(header, "Cookie Header")
+                Toast.makeText(requireContext(), "已复制全部 ${cookieList.size} 项 Cookie Header 字符串！", Toast.LENGTH_SHORT).show()
+            }
+
+            // 底部主操作按钮复制当前格式
             b.btnCopyAll.setOnClickListener {
                 copyCurrentFormat(host)
             }
@@ -168,7 +178,7 @@ class CookieBottomSheetDialog : BottomSheetDialogFragment() {
                 R.id.chipFormatHeader -> {
                     currentMode = Mode.HEADER
                     showTextView(CookieFormatter.toHeaderString(cookieList))
-                    b.btnCopyAll.text = "复制 Header 字符串"
+                    b.btnCopyAll.text = "复制全部 Header 字符串"
                 }
                 R.id.chipFormatJson -> {
                     currentMode = Mode.JSON
@@ -204,21 +214,27 @@ class CookieBottomSheetDialog : BottomSheetDialogFragment() {
     }
 
     private fun copyCurrentFormat(host: String) {
-        val textToCopy = when (currentMode) {
-            Mode.LIST, Mode.HEADER -> CookieFormatter.toHeaderString(cookieList)
-            Mode.JSON -> CookieFormatter.toJson(cookieList)
-            Mode.NETSCAPE -> CookieFormatter.toNetscape(cookieList, host)
-            Mode.PYTHON -> CookieFormatter.toPythonSnippet(cookieList, targetUrl, currentUserAgent)
-            Mode.CURL -> CookieFormatter.toCurlCommand(cookieList, targetUrl, currentUserAgent)
+        if (cookieList.isEmpty()) {
+            Toast.makeText(requireContext(), "当前没有可提取的 Cookie", Toast.LENGTH_SHORT).show()
+            return
         }
+
+        val (textToCopy, formatName) = when (currentMode) {
+            Mode.LIST, Mode.HEADER -> Pair(CookieFormatter.toHeaderString(cookieList), "Header 键值对")
+            Mode.JSON -> Pair(CookieFormatter.toJson(cookieList), "JSON 格式")
+            Mode.NETSCAPE -> Pair(CookieFormatter.toNetscape(cookieList, host), "Netscape txt")
+            Mode.PYTHON -> Pair(CookieFormatter.toPythonSnippet(cookieList, targetUrl, currentUserAgent), "Python 脚本")
+            Mode.CURL -> Pair(CookieFormatter.toCurlCommand(cookieList, targetUrl, currentUserAgent), "cURL 命令")
+        }
+
         copyToClipboard(textToCopy, "Cookie 数据")
+        Toast.makeText(requireContext(), "已复制全部 ${cookieList.size} 个 Cookie ($formatName) 到剪贴板！", Toast.LENGTH_SHORT).show()
     }
 
     private fun copyToClipboard(text: String, label: String) {
         val clipboard = requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         val clip = ClipData.newPlainText(label, text)
         clipboard.setPrimaryClip(clip)
-        Toast.makeText(requireContext(), R.string.copied_to_clipboard, Toast.LENGTH_SHORT).show()
     }
 
     override fun onDestroyView() {
