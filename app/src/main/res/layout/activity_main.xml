@@ -16,20 +16,22 @@
 
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="54dp"
+            android:layout_height="56dp"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:paddingHorizontal="12dp">
+            android:paddingStart="10dp"
+            android:paddingEnd="4dp">
 
-            <!-- 搜索与网址输入容器 -->
+            <!-- 地址栏：安全标识 + 输入 + 清空/刷新 -->
             <LinearLayout
                 android:layout_width="0dp"
-                android:layout_height="40dp"
+                android:layout_height="42dp"
                 android:layout_weight="1"
                 android:background="@drawable/bg_search_box"
                 android:gravity="center_vertical"
                 android:orientation="horizontal"
-                android:paddingHorizontal="12dp">
+                android:paddingStart="12dp"
+                android:paddingEnd="4dp">
 
                 <ImageView
                     android:id="@+id/ivSecurity"
@@ -46,62 +48,111 @@
                     android:layout_weight="1"
                     android:background="@null"
                     android:hint="@string/search_or_enter_url"
-                    android:imeOptions="actionGo"
+                    android:imeOptions="actionGo|flagNoExtractUi"
+                    android:importantForAutofill="no"
                     android:inputType="textUri"
                     android:maxLines="1"
+                    android:selectAllOnFocus="true"
+                    android:singleLine="true"
                     android:textColor="@color/on_surface"
                     android:textColorHint="@color/on_surface_variant"
-                    android:textSize="13sp" />
+                    android:textSize="14sp" />
+
+                <ImageButton
+                    android:id="@+id/btnClearUrl"
+                    android:layout_width="36dp"
+                    android:layout_height="36dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="清空"
+                    android:padding="9dp"
+                    android:src="@drawable/ic_close"
+                    android:visibility="gone" />
 
                 <ImageButton
                     android:id="@+id/btnRefresh"
-                    android:layout_width="32dp"
-                    android:layout_height="32dp"
+                    android:layout_width="36dp"
+                    android:layout_height="36dp"
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:contentDescription="刷新"
-                    android:padding="6dp"
+                    android:padding="8dp"
                     android:src="@drawable/ic_refresh" />
             </LinearLayout>
 
+            <!-- 更多菜单：翻译 / 缩放 / 桌面版 / 查找 / 分享 / 清除等 -->
             <ImageButton
-                android:id="@+id/btnTranslate"
-                android:layout_width="38dp"
-                android:layout_height="38dp"
-                android:layout_marginStart="4dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="网页翻译"
-                android:padding="8dp"
-                android:src="@drawable/ic_translate" />
-
-            <ImageButton
-                android:id="@+id/btnMoreTools"
-                android:layout_width="38dp"
-                android:layout_height="38dp"
+                android:id="@+id/btnMenu"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
                 android:layout_marginStart="2dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="缩放与工具"
-                android:padding="8dp"
-                android:src="@drawable/ic_zoom_in" />
+                android:contentDescription="更多"
+                android:padding="10dp"
+                android:src="@drawable/ic_more_vert" />
+        </LinearLayout>
+
+        <!-- 页内查找栏 -->
+        <LinearLayout
+            android:id="@+id/layoutFindBar"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingHorizontal="10dp"
+            android:visibility="gone">
+
+            <EditText
+                android:id="@+id/etFind"
+                android:layout_width="0dp"
+                android:layout_height="38dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_search_box"
+                android:hint="在页面中查找"
+                android:imeOptions="actionSearch|flagNoExtractUi"
+                android:importantForAutofill="no"
+                android:inputType="text"
+                android:paddingHorizontal="12dp"
+                android:singleLine="true"
+                android:textColor="@color/on_surface"
+                android:textColorHint="@color/on_surface_variant"
+                android:textSize="14sp" />
+
+            <TextView
+                android:id="@+id/tvFindCount"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginHorizontal="8dp"
+                android:minWidth="36dp"
+                android:gravity="center"
+                android:text="0/0"
+                android:textColor="@color/on_surface_variant"
+                android:textSize="12sp" />
 
             <ImageButton
-                android:id="@+id/btnSwitchUa"
-                android:layout_width="38dp"
-                android:layout_height="38dp"
-                android:layout_marginStart="2dp"
+                android:id="@+id/btnFindPrev"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="切换UA"
+                android:contentDescription="上一个"
                 android:padding="8dp"
-                android:src="@drawable/ic_desktop" />
+                android:src="@drawable/ic_keyboard_arrow_up" />
 
             <ImageButton
-                android:id="@+id/btnClear"
-                android:layout_width="38dp"
-                android:layout_height="38dp"
-                android:layout_marginStart="2dp"
+                android:id="@+id/btnFindNext"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="清理Cookie"
+                android:contentDescription="下一个"
                 android:padding="8dp"
-                android:src="@drawable/ic_clear" />
+                android:src="@drawable/ic_keyboard_arrow_down" />
+
+            <ImageButton
+                android:id="@+id/btnFindClose"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="关闭查找"
+                android:padding="9dp"
+                android:src="@drawable/ic_close" />
         </LinearLayout>
 
         <ProgressBar
@@ -170,7 +221,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="28dp"
-                    android:text="常用平台快捷入口"
+                    android:text="快捷入口（长按可删除，菜单里可添加当前网页）"
                     android:textColor="@color/primary"
                     android:textSize="14sp"
                     android:textStyle="bold" />
@@ -182,47 +233,6 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="12dp">
 
-                    <com.google.android.material.chip.Chip
-                        android:id="@+id/chipBilibili"
-                        style="@style/Widget.Material3.Chip.Assist"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="哔哩哔哩 (B站)" />
-
-                    <com.google.android.material.chip.Chip
-                        android:id="@+id/chipWeibo"
-                        style="@style/Widget.Material3.Chip.Assist"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="微博网页版" />
-
-                    <com.google.android.material.chip.Chip
-                        android:id="@+id/chipGithub"
-                        style="@style/Widget.Material3.Chip.Assist"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="GitHub" />
-
-                    <com.google.android.material.chip.Chip
-                        android:id="@+id/chipBaidu"
-                        style="@style/Widget.Material3.Chip.Assist"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="百度搜索" />
-
-                    <com.google.android.material.chip.Chip
-                        android:id="@+id/chipZhihu"
-                        style="@style/Widget.Material3.Chip.Assist"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="知乎" />
-
-                    <com.google.android.material.chip.Chip
-                        android:id="@+id/chipV2ex"
-                        style="@style/Widget.Material3.Chip.Assist"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="V2EX" />
                 </com.google.android.material.chip.ChipGroup>
 
                 <!-- 特性说明小卡片 -->
@@ -254,7 +264,7 @@
                             android:layout_height="wrap_content"
                             android:layout_marginTop="8dp"
                             android:lineSpacingExtra="4dp"
-                            android:text="• 多窗口支持：底部点击窗口图标，随意新建/切换/关闭标签页。\n• 储存库管理：提取的 Cookie 可一键永久存入本地保险库，随时查看导出。\n• 穿透 HttpOnly：利用原生 Android 协议栈读取任意敏感安全 Token。\n• 真实 WebView：过滑块与风控验证码如真人普通上网，零泄漏风险。"
+                            android:text="• 登录网站后点底部「提取」即可查看/导出全部 Cookie（含 HttpOnly）。\n• 「储存库」保存的账号可一键免密直达。\n• 新建「分身」标签可同时登录多个账号，互不串号。\n• 双指可缩放任意网页；长按链接/图片有更多操作。"
                             android:textColor="@color/on_surface_variant"
                             android:textSize="12sp" />
                     </LinearLayout>
@@ -300,6 +310,16 @@
                 android:contentDescription="前进"
                 android:padding="10dp"
                 android:src="@drawable/ic_arrow_forward" />
+
+            <!-- 主页 -->
+            <ImageButton
+                android:id="@+id/btnNavHome"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="主页"
+                android:padding="10dp"
+                android:src="@drawable/ic_home" />
 
             <View
                 android:layout_width="0dp"
@@ -363,5 +383,14 @@
                 app:iconTint="@color/on_primary" />
         </LinearLayout>
     </com.google.android.material.bottomappbar.BottomAppBar>
+
+    <!-- 网页视频全屏容器 -->
+    <FrameLayout
+        android:id="@+id/layoutFullscreen"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@android:color/black"
+        android:elevation="16dp"
+        android:visibility="gone" />
 
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

@@ -1,38 +1,66 @@
 package com.cookiebox.app
 
+import android.Manifest
 import android.annotation.SuppressLint
+import android.app.DownloadManager
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.os.Environment
+import android.os.Handler
+import android.os.Looper
 import android.os.Message
+import android.text.Editable
+import android.text.TextWatcher
+import android.util.Patterns
 import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.webkit.CookieManager
+import android.webkit.URLUtil
+import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
+import android.webkit.WebStorage
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.PopupMenu
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.webkit.ProfileStore
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import com.cookiebox.app.databinding.ActivityMainBinding
+import com.cookiebox.app.engine.BrowserPrefs
 import com.cookiebox.app.engine.DomainUtils
+import com.cookiebox.app.engine.WebTranslator
 import com.cookiebox.app.model.SavedCookieRecord
 import com.cookiebox.app.model.TabItem
 import com.cookiebox.app.ui.CookieBottomSheetDialog
 import com.cookiebox.app.ui.StorageBottomSheetDialog
 import com.cookiebox.app.ui.TabsBottomSheetDialog
+import com.cookiebox.app.ui.WebToolsBottomSheetDialog
+import com.google.android.material.chip.Chip
 import java.util.UUID
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
+    private lateinit var prefs: BrowserPrefs
 
     private val tabs = mutableListOf<TabItem>()
     private var activeTabId: String = ""
@@ -40,34 +68,159 @@ class MainActivity : AppCompatActivity() {
 
     private var tabsDialog: TabsBottomSheetDialog? = null
 
+    // 文件上传
+    private var filePathCallback: ValueCallback<Array<Uri>>? = null
+    private val fileChooserLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            val cb = filePathCallback
+            filePathCallback = null
+            cb?.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(result.resultCode, result.data))
+        }
+
+    // 视频全屏
+    private var customView: View? = null
+    private var customViewCallback: WebChromeClient.CustomViewCallback? = null
+
+    // 旧系统（Android 9 及以下）下载需要存储权限
+    private var pendingDownload: (() -> Unit)? = null
+    private val storagePermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            val action = pendingDownload
+            pendingDownload = null
+            if (granted) action?.invoke() else toast("没有存储权限，无法下载")
+        }
+
+    private var lastBackPressAt = 0L
+
     companion object {
         private const val DESKTOP_UA =
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+        private const val DEFAULT_PROFILE = "Profile_Default"
 
         private fun cleanUserAgent(raw: String): String {
             // 剥除 Android WebView 专有的 Version/4.0 和 ; wv 标记，模拟官方纯净 Chrome，避免触发 Google 等站点的 CookieMismatch 拦截
             return raw.replace("; wv", "")
                 .replace("Version/4.0 ", "")
         }
+
+        /** 解除网站对双指缩放的封锁：改写 viewport，并持续监听 SPA 动态改回的情况 */
+        private val UNLOCK_ZOOM_JS = """
+            (function() {
+                function fix() {
+                    var metas = document.querySelectorAll('meta[name="viewport"]');
+                    metas.forEach(function(meta) {
+                        var c = meta.getAttribute('content') || '';
+                        var n = c.replace(/user-scalable\s*=\s*(no|0)/gi, 'user-scalable=yes')
+                                 .replace(/maximum-scale\s*=\s*[0-9.]+/gi, 'maximum-scale=10');
+                        if (!/user-scalable/i.test(n)) n += ', user-scalable=yes';
+                        if (!/maximum-scale/i.test(n)) n += ', maximum-scale=10';
+                        if (n !== c) meta.setAttribute('content', n);
+                    });
+                }
+                fix();
+                if (!window.__cbZoomStyle && document.head) {
+                    window.__cbZoomStyle = true;
+                    var st = document.createElement('style');
+                    st.textContent = 'html,body{touch-action:manipulation !important;}';
+                    document.head.appendChild(st);
+                }
+                if (!window.__cbZoomObs && document.head && window.MutationObserver) {
+                    window.__cbZoomObs = new MutationObserver(fix);
+                    window.__cbZoomObs.observe(document.head, {subtree: true, childList: true, attributes: true, attributeFilter: ['content']});
+                }
+            })();
+        """.trimIndent()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        prefs = BrowserPrefs(this)
 
-        // 默认新建一个初始主身份标签页
-        createNewTab(initialUrl = "", isClone = false)
+        restoreSessionOrCreateTab()
 
         setupListeners()
-        setupShortcuts()
+        renderShortcuts()
         setupBackNavigation()
+        handleIncomingIntent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleIncomingIntent(intent)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        saveSession()
+        tabs.forEach { (it.customCookieManager ?: CookieManager.getInstance()).flush() }
+    }
+
+    /** 外部分享/打开链接到本浏览器 */
+    private fun handleIncomingIntent(intent: Intent?) {
+        intent ?: return
+        val url = when (intent.action) {
+            Intent.ACTION_VIEW -> intent.dataString
+            Intent.ACTION_SEND -> intent.getStringExtra(Intent.EXTRA_TEXT)?.let { text ->
+                Regex("https?://\\S+").find(text)?.value ?: text
+            }
+            else -> null
+        }
+        if (!url.isNullOrBlank()) {
+            val active = getActiveTab()
+            if (active != null && active.url.isBlank()) loadUrlInTab(active, url) else createNewTab(url, false)
+        }
+    }
+
+    // ==================== 会话保存与恢复 ====================
+
+    private fun saveSession() {
+        val saved = tabs.map {
+            BrowserPrefs.SavedTab(
+                url = it.webView?.url?.takeIf { u -> u != "about:blank" } ?: it.pendingUrl ?: it.url,
+                title = it.title,
+                isDesktop = it.isDesktop,
+                isClone = it.isClone,
+                profileName = it.profileName
+            )
+        }
+        prefs.saveSession(saved, tabs.indexOfFirst { it.id == activeTabId }.coerceAtLeast(0))
+    }
+
+    private fun restoreSessionOrCreateTab() {
+        val (saved, activeIndex) = prefs.loadSession()
+        if (saved.isEmpty()) {
+            createNewTab(initialUrl = "", isClone = false)
+            return
+        }
+        val created = saved.map { s ->
+            createNewTab(
+                initialUrl = "",
+                isClone = s.isClone,
+                profileName = s.profileName,
+                switchTo = false,
+                desktop = s.isDesktop
+            ).also {
+                it.title = s.title.ifBlank { it.title }
+                it.url = s.url
+                it.pendingUrl = s.url.takeIf { u -> u.isNotBlank() }
+            }
+        }
+        switchTab(created[activeIndex.coerceIn(0, created.size - 1)].id)
     }
 
     // ==================== 多窗口与多账号网页分身 ====================
 
     @SuppressLint("SetJavaScriptEnabled")
-    private fun createNewTab(initialUrl: String = "", isClone: Boolean = false): TabItem {
+    private fun createNewTab(
+        initialUrl: String = "",
+        isClone: Boolean = false,
+        profileName: String? = null,
+        openerId: String? = null,
+        switchTo: Boolean = true,
+        desktop: Boolean = false
+    ): TabItem {
         val tabId = UUID.randomUUID().toString()
         val webView = WebView(this).apply {
             layoutParams = ViewGroup.LayoutParams(
@@ -80,38 +233,41 @@ class MainActivity : AppCompatActivity() {
         if (defaultMobileUa.isEmpty()) {
             defaultMobileUa = cleanUserAgent(settings.userAgentString)
         }
-        settings.userAgentString = defaultMobileUa
+        settings.userAgentString = if (desktop) DESKTOP_UA else defaultMobileUa
 
         settings.javaScriptEnabled = true
         settings.domStorageEnabled = true
         settings.databaseEnabled = true
         settings.useWideViewPort = true
         settings.loadWithOverviewMode = true
+        // 双指缩放：开启内置缩放手势，隐藏老式 +/- 按钮
         settings.setSupportZoom(true)
         settings.builtInZoomControls = true
         settings.displayZoomControls = false
         settings.allowFileAccess = true
         settings.allowContentAccess = true
+        settings.mediaPlaybackRequiresUserGesture = false
         settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
 
         // 开启多窗口支持与脚本弹窗代理，适配 target="_blank"
         settings.setSupportMultipleWindows(true)
         settings.javaScriptCanOpenWindowsAutomatically = true
 
-        val profileName = if (isClone) {
+        val resolvedProfile = profileName ?: if (isClone) {
             "Profile_Clone_${UUID.randomUUID().toString().take(8)}"
         } else {
-            "Profile_Default"
+            DEFAULT_PROFILE
         }
 
         val newTab = TabItem(
             id = tabId,
             title = if (isClone) "网页分身" else "新标签页",
             url = initialUrl,
-            isDesktop = false,
+            isDesktop = desktop,
             isClone = isClone,
-            profileName = profileName,
-            webView = webView
+            profileName = resolvedProfile,
+            webView = webView,
+            openerId = openerId
         )
 
         // 核心：基于 AndroidX WebKit 架构实现真正的引擎级分身隔离 (各 Profile 持有完全独立的 Cookie 与 Storage)
@@ -121,10 +277,7 @@ class MainActivity : AppCompatActivity() {
             override fun onReceivedTitle(view: WebView?, title: String?) {
                 if (!title.isNullOrBlank()) {
                     newTab.title = title
-                    val dialog = tabsDialog
-                    if (dialog != null && dialog.isAdded && !dialog.isStateSaved) {
-                        dialog.setTabsData(tabs, activeTabId)
-                    }
+                    refreshTabsDialog()
                 }
             }
 
@@ -137,6 +290,7 @@ class MainActivity : AppCompatActivity() {
                         binding.progressBar.visibility = View.GONE
                     }
                 }
+                if (newProgress >= 30) view?.evaluateJavascript(UNLOCK_ZOOM_JS, null)
             }
 
             override fun onCreateWindow(
@@ -146,7 +300,14 @@ class MainActivity : AppCompatActivity() {
                 resultMsg: Message?
             ): Boolean {
                 if (resultMsg == null) return false
-                val spawnedTab = createNewTab(initialUrl = "", isClone = newTab.isClone)
+                // 弹窗沿用打开者的身份（同一个 Profile），保证登录态一致
+                val spawnedTab = createNewTab(
+                    initialUrl = "",
+                    isClone = newTab.isClone,
+                    profileName = newTab.profileName,
+                    openerId = newTab.id,
+                    desktop = newTab.isDesktop
+                )
                 val transport = resultMsg.obj as? WebView.WebViewTransport
                 if (transport != null) {
                     transport.webView = spawnedTab.webView
@@ -162,20 +323,70 @@ class MainActivity : AppCompatActivity() {
                     closeTab(tabToClose.id)
                 }
             }
+
+            override fun onShowFileChooser(
+                webView: WebView?,
+                callback: ValueCallback<Array<Uri>>?,
+                params: FileChooserParams?
+            ): Boolean {
+                filePathCallback?.onReceiveValue(null)
+                filePathCallback = callback
+                return try {
+                    val intent = params?.createIntent() ?: Intent(Intent.ACTION_GET_CONTENT).apply {
+                        type = "*/*"
+                        addCategory(Intent.CATEGORY_OPENABLE)
+                    }
+                    if (params?.mode == FileChooserParams.MODE_OPEN_MULTIPLE) {
+                        intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+                    }
+                    fileChooserLauncher.launch(intent)
+                    true
+                } catch (e: Exception) {
+                    filePathCallback = null
+                    toast("无法打开文件选择器")
+                    false
+                }
+            }
+
+            override fun onShowCustomView(view: View?, callback: CustomViewCallback?) {
+                if (customView != null) {
+                    callback?.onCustomViewHidden()
+                    return
+                }
+                customView = view
+                customViewCallback = callback
+                binding.layoutFullscreen.addView(
+                    view,
+                    ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+                )
+                binding.layoutFullscreen.visibility = View.VISIBLE
+                setSystemBarsHidden(true)
+            }
+
+            override fun onHideCustomView() {
+                exitFullscreen()
+            }
         }
 
         webView.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                 val url = request?.url?.toString() ?: return false
-                if (url.startsWith("http://") || url.startsWith("https://")) {
+                val scheme = request.url.scheme?.lowercase() ?: return false
+                if (scheme in setOf("http", "https", "about", "data", "blob", "javascript", "file")) {
                     return false
+                }
+                // weixin:// / intent:// 等外部应用链接：仅在用户点击时询问是否打开，避免网页自动跳转骚扰
+                if (request.hasGesture()) {
+                    handleExternalScheme(newTab, url)
                 }
                 return true
             }
 
             override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                 url?.let {
+                    if (it == "about:blank") return@let
                     newTab.url = it
+                    newTab.pendingUrl = null
                     if (newTab.id == activeTabId) {
                         if (!binding.etUrl.isFocused) {
                             binding.etUrl.setText(it)
@@ -186,22 +397,52 @@ class MainActivity : AppCompatActivity() {
                 }
             }
 
+            override fun onPageCommitVisible(view: WebView?, url: String?) {
+                view?.evaluateJavascript(UNLOCK_ZOOM_JS, null)
+            }
+
             override fun onPageFinished(view: WebView?, url: String?) {
                 val cm = newTab.customCookieManager ?: CookieManager.getInstance()
                 cm.flush()
                 url?.let {
+                    if (it == "about:blank") return@let
                     newTab.url = it
                     if (newTab.id == activeTabId) {
                         updateSecurityIcon(it)
                     }
                 }
-                unlockViewportScaling(view)
+                view?.evaluateJavascript(UNLOCK_ZOOM_JS, null)
+                if (newTab.id == activeTabId) updateNavButtons()
+            }
+
+            override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
+                if (url == "about:blank") {
+                    // 回退到了主页
+                    newTab.url = ""
+                    if (newTab.id == activeTabId) {
+                        binding.etUrl.setText("")
+                        updateSecurityIcon("")
+                        binding.layoutShortcuts.visibility = View.VISIBLE
+                    }
+                }
+                if (newTab.id == activeTabId) {
+                    if (url != null && url != "about:blank" && !binding.etUrl.isFocused) binding.etUrl.setText(url)
+                    if (url != null && url != "about:blank") binding.layoutShortcuts.visibility = View.GONE
+                    updateNavButtons()
+                }
             }
         }
 
+        // 下载：带上当前身份的 Cookie 和 UA，登录后才能下的文件也能下载
+        webView.setDownloadListener { url, userAgent, contentDisposition, mimeType, _ ->
+            startDownload(newTab, url, userAgent, contentDisposition, mimeType)
+        }
+
+        // 长按链接 / 图片
+        webView.setOnLongClickListener { showLongPressMenu(newTab) }
+
         tabs.add(newTab)
-        switchTab(tabId)
-        updateTabBadge()
+        if (switchTo) switchTab(tabId) else updateTabBadge()
 
         if (initialUrl.isNotBlank()) {
             loadUrlInTab(newTab, initialUrl)
@@ -237,6 +478,7 @@ class MainActivity : AppCompatActivity() {
     private fun switchTab(targetTabId: String) {
         val targetTab = tabs.find { it.id == targetTabId } ?: return
         activeTabId = targetTabId
+        closeFindBar()
 
         // 仅切换可见容器，各 Profile 保持完全独立的 Cookie 会话，绝不清除，绝不掉线！
         binding.layoutWebContainer.removeAllViews()
@@ -247,22 +489,41 @@ class MainActivity : AppCompatActivity() {
             binding.layoutWebContainer.addView(it)
         }
 
+        // 恢复的标签切过来时才真正加载，避免启动时同时加载所有网页
+        targetTab.pendingUrl?.let { pending ->
+            targetTab.pendingUrl = null
+            targetTab.webView?.loadUrl(pending)
+        }
+
         if (targetTab.url.isNotBlank()) {
             binding.etUrl.setText(targetTab.url)
             updateSecurityIcon(targetTab.url)
             binding.layoutShortcuts.visibility = View.GONE
         } else {
             binding.etUrl.setText("")
+            updateSecurityIcon("")
             binding.layoutShortcuts.visibility = View.VISIBLE
         }
-
-        if (targetTab.isDesktop) {
-            binding.btnSwitchUa.setImageResource(R.drawable.ic_mobile)
-        } else {
-            binding.btnSwitchUa.setImageResource(R.drawable.ic_desktop)
-        }
+        binding.progressBar.visibility = View.GONE
 
         updateTabBadge()
+        updateNavButtons()
+    }
+
+    /** 关闭标签（分身标签会删除其登录状态，先确认） */
+    private fun requestCloseTab(tabId: String) {
+        val tab = tabs.find { it.id == tabId } ?: return
+        val profileStillUsed = tabs.any { it.id != tabId && it.profileName == tab.profileName }
+        if (tab.isClone && !profileStillUsed) {
+            AlertDialog.Builder(this)
+                .setTitle("关闭分身标签？")
+                .setMessage("关闭后这个分身的登录状态会被删除。需要保留的话，先点「提取」→「保存至储存库」。")
+                .setPositiveButton("关闭并删除") { _, _ -> closeTab(tabId) }
+                .setNegativeButton("取消", null)
+                .show()
+        } else {
+            closeTab(tabId)
+        }
     }
 
     private fun closeTab(tabId: String) {
@@ -270,10 +531,17 @@ class MainActivity : AppCompatActivity() {
         if (targetIndex < 0) return
 
         val removingTab = tabs[targetIndex]
-        removingTab.webView?.destroy()
+        if (customView != null && tabId == activeTabId) exitFullscreen()
+        removingTab.webView?.let {
+            (it.parent as? ViewGroup)?.removeView(it)
+            it.destroy()
+        }
+        tabs.removeAt(targetIndex)
 
-        // 释放分身 Profile 存储资源
-        if (removingTab.isClone && WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) {
+        // 释放分身 Profile：只有没有其他标签（如它打开的弹窗）在用时才删除
+        if (removingTab.isClone && tabs.none { it.profileName == removingTab.profileName } &&
+            WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)
+        ) {
             try {
                 ProfileStore.getInstance().deleteProfile(removingTab.profileName)
             } catch (e: Exception) {
@@ -281,19 +549,24 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        tabs.removeAt(targetIndex)
-
         if (tabs.isEmpty()) {
             createNewTab(initialUrl = "", isClone = false)
-        } else {
-            if (tabId == activeTabId) {
+        } else if (tabId == activeTabId) {
+            val opener = tabs.find { it.id == removingTab.openerId }
+            if (opener != null) {
+                switchTab(opener.id)
+            } else {
                 val nextIndex = if (targetIndex >= tabs.size) tabs.size - 1 else targetIndex
                 switchTab(tabs[nextIndex].id)
-            } else {
-                updateTabBadge()
             }
+        } else {
+            updateTabBadge()
         }
 
+        refreshTabsDialog()
+    }
+
+    private fun refreshTabsDialog() {
         val dialog = tabsDialog
         if (dialog != null && dialog.isAdded && !dialog.isStateSaved) {
             dialog.setTabsData(tabs, activeTabId)
@@ -301,7 +574,16 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateTabBadge() {
-        binding.tvTabBadge.text = tabs.size.toString()
+        binding.tvTabBadge.text = if (tabs.size > 99) "∞" else tabs.size.toString()
+    }
+
+    private fun updateNavButtons() {
+        val wv = getActiveTab()?.webView
+        val canBack = wv?.canGoBack() == true
+        val canForward = wv?.canGoForward() == true
+        binding.btnNavBack.alpha = if (canBack) 1f else 0.35f
+        binding.btnNavForward.alpha = if (canForward) 1f else 0.35f
+        binding.btnNavForward.isEnabled = canForward
     }
 
     private fun getActiveTab(): TabItem? {
@@ -310,20 +592,46 @@ class MainActivity : AppCompatActivity() {
 
     // ==================== 页面加载与一键免密直达 ====================
 
-    private fun loadUrlInTab(tab: TabItem, input: String) {
-        val targetUrl = when {
-            input.startsWith("http://") || input.startsWith("https://") -> input
-            input.contains(".") && !input.contains(" ") -> "https://$input"
-            else -> "https://www.bing.com/search?q=$input"
+    private fun resolveInput(raw: String): String {
+        val input = raw.trim()
+        return when {
+            input.isEmpty() -> ""
+            Regex("^[a-zA-Z][a-zA-Z0-9+.-]*://.*").matches(input) -> input
+            input.startsWith("about:") || input.startsWith("javascript:") -> input
+            !input.contains(" ") && (Patterns.WEB_URL.matcher(input).matches() ||
+                    input.startsWith("localhost") ||
+                    Regex("^\\d{1,3}(\\.\\d{1,3}){3}(:\\d+)?(/.*)?$").matches(input)) -> {
+                if (input.startsWith("localhost") || input.first().isDigit()) "http://$input" else "https://$input"
+            }
+            else -> prefs.searchUrl(input)
         }
+    }
+
+    private fun loadUrlInTab(tab: TabItem, input: String) {
+        val targetUrl = resolveInput(input)
+        if (targetUrl.isEmpty()) return
 
         tab.url = targetUrl
+        tab.pendingUrl = null
         if (tab.id == activeTabId) {
             binding.etUrl.setText(targetUrl)
             updateSecurityIcon(targetUrl)
             binding.layoutShortcuts.visibility = View.GONE
         }
         tab.webView?.loadUrl(targetUrl)
+    }
+
+    private fun goHome() {
+        val tab = getActiveTab() ?: return
+        tab.url = ""
+        tab.title = if (tab.isClone) "网页分身" else "新标签页"
+        tab.webView?.stopLoading()
+        tab.webView?.loadUrl("about:blank")
+        binding.etUrl.setText("")
+        updateSecurityIcon("")
+        binding.layoutShortcuts.visibility = View.VISIBLE
+        binding.progressBar.visibility = View.GONE
+        refreshTabsDialog()
     }
 
     /**
@@ -335,13 +643,13 @@ class MainActivity : AppCompatActivity() {
         val cookies = record.getCookieList()
 
         if (cookies.isEmpty()) {
-            Toast.makeText(this, "该记录中暂无有效 Cookie", Toast.LENGTH_SHORT).show()
+            toast("该记录中暂无有效 Cookie")
             return
         }
 
         // 选择当前活动的空白标签或新建标签
         val activeTab = getActiveTab()
-        val targetTab = if (activeTab != null && (activeTab.url.isBlank() || activeTab.url == "about:blank")) {
+        val targetTab = if (activeTab != null && !activeTab.isClone && (activeTab.url.isBlank() || activeTab.url == "about:blank")) {
             activeTab
         } else {
             createNewTab(initialUrl = "", isClone = false)
@@ -354,7 +662,7 @@ class MainActivity : AppCompatActivity() {
         val isHttps = cleanEntryUrl.startsWith("https://")
         val domainUrl = if (rootDomain.isNotEmpty()) "https://$rootDomain" else cleanEntryUrl
 
-        var pendingCount = 0
+        var pendingCount: Int
         val writeList = mutableListOf<Pair<String, String>>()
 
         for (item in cookies) {
@@ -391,7 +699,7 @@ class MainActivity : AppCompatActivity() {
             cookieManager.flush()
             binding.root.post {
                 loadUrlInTab(targetTab, cleanEntryUrl)
-                Toast.makeText(this, "已写入 ${cookies.size} 项 Cookie，正在免密直达 ${record.domain}", Toast.LENGTH_SHORT).show()
+                toast("已写入 ${cookies.size} 项 Cookie，正在免密直达 ${record.domain}")
             }
         }
 
@@ -409,8 +717,11 @@ class MainActivity : AppCompatActivity() {
         if (url.startsWith("https://")) {
             binding.ivSecurity.setImageResource(R.drawable.ic_lock)
             binding.ivSecurity.setColorFilter(getColor(R.color.primary))
+        } else if (url.isBlank()) {
+            binding.ivSecurity.setImageResource(R.drawable.ic_search)
+            binding.ivSecurity.setColorFilter(getColor(R.color.on_surface_variant))
         } else {
-            binding.ivSecurity.setImageResource(R.drawable.ic_lock)
+            binding.ivSecurity.setImageResource(R.drawable.ic_public)
             binding.ivSecurity.setColorFilter(getColor(R.color.on_surface_variant))
         }
     }
@@ -422,18 +733,18 @@ class MainActivity : AppCompatActivity() {
 
         if (tab.isDesktop) {
             settings.userAgentString = DESKTOP_UA
-            binding.btnSwitchUa.setImageResource(R.drawable.ic_mobile)
-            Toast.makeText(this, R.string.current_ua_desktop, Toast.LENGTH_SHORT).show()
+            toast(getString(R.string.current_ua_desktop))
         } else {
             settings.userAgentString = defaultMobileUa
-            binding.btnSwitchUa.setImageResource(R.drawable.ic_desktop)
-            Toast.makeText(this, R.string.current_ua_mobile, Toast.LENGTH_SHORT).show()
+            toast(getString(R.string.current_ua_mobile))
         }
 
-        if (!tab.url.isNullOrBlank()) {
+        if (tab.url.isNotBlank()) {
             tab.webView?.reload()
         }
     }
+
+    // ==================== 交互 ====================
 
     private fun setupListeners() {
         // 地址栏回车加载
@@ -441,91 +752,342 @@ class MainActivity : AppCompatActivity() {
             if (actionId == EditorInfo.IME_ACTION_GO || actionId == EditorInfo.IME_ACTION_DONE) {
                 val input = binding.etUrl.text.toString().trim()
                 getActiveTab()?.let { loadUrlInTab(it, input) }
+                binding.etUrl.clearFocus()
                 hideKeyboard()
                 true
             } else {
                 false
             }
         }
-
-        // 顶部一键即时翻译为中文
-        binding.btnTranslate.setOnClickListener {
-            val wv = getActiveTab()?.webView
-            if (wv != null && wv.url != null) {
-                com.cookiebox.app.engine.WebTranslator.translateInPage(wv, "zh-CN")
-                Toast.makeText(this, "正在将当前网页翻译为中文...", Toast.LENGTH_SHORT).show()
+        binding.etUrl.setOnFocusChangeListener { _, hasFocus ->
+            updateUrlBarButtons()
+            if (!hasFocus) {
+                // 放弃编辑时还原为当前网址
+                val url = getActiveTab()?.url.orEmpty()
+                if (binding.etUrl.text.toString() != url) binding.etUrl.setText(url)
             }
         }
+        binding.etUrl.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: Editable?) = updateUrlBarButtons()
+        })
+        binding.btnClearUrl.setOnClickListener { binding.etUrl.setText("") }
 
-        // 顶部页面缩放与工具箱
-        binding.btnMoreTools.setOnClickListener {
-            openToolsDialog()
-        }
-
-        // 刷新
+        // 刷新 / 停止
         binding.btnRefresh.setOnClickListener {
-            getActiveTab()?.webView?.reload()
+            val wv = getActiveTab()?.webView ?: return@setOnClickListener
+            if (binding.progressBar.visibility == View.VISIBLE) wv.stopLoading() else wv.reload()
         }
 
-        // 切换桌面/移动端 UA
-        binding.btnSwitchUa.setOnClickListener {
-            toggleActiveTabUserAgent()
-        }
+        binding.btnMenu.setOnClickListener { showMainMenu(it) }
 
-        // 清理 Cookie 与全量缓存
-        binding.btnClear.setOnClickListener {
-            showClearCookiesDialog()
+        // 页内查找
+        binding.etFind.setOnEditorActionListener { _, _, _ ->
+            getActiveTab()?.webView?.findNext(true)
+            true
         }
+        binding.etFind.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: Editable?) {
+                val wv = getActiveTab()?.webView ?: return
+                val q = s?.toString().orEmpty()
+                if (q.isEmpty()) {
+                    wv.clearMatches()
+                    binding.tvFindCount.text = "0/0"
+                } else {
+                    wv.findAllAsync(q)
+                }
+            }
+        })
+        binding.btnFindPrev.setOnClickListener { getActiveTab()?.webView?.findNext(false) }
+        binding.btnFindNext.setOnClickListener { getActiveTab()?.webView?.findNext(true) }
+        binding.btnFindClose.setOnClickListener { closeFindBar() }
 
-        // 底部导航栏：后退
+        // 底部导航栏
         binding.btnNavBack.setOnClickListener {
             val wv = getActiveTab()?.webView
-            if (wv != null && wv.canGoBack()) {
-                wv.goBack()
-            } else {
-                binding.layoutShortcuts.visibility = View.VISIBLE
-            }
+            if (wv != null && wv.canGoBack()) wv.goBack()
         }
-
-        // 底部导航栏：前进
         binding.btnNavForward.setOnClickListener {
             val wv = getActiveTab()?.webView
-            if (wv != null && wv.canGoForward()) {
-                wv.goForward()
+            if (wv != null && wv.canGoForward()) wv.goForward()
+        }
+        binding.btnNavHome.setOnClickListener { goHome() }
+        binding.btnNavTabs.setOnClickListener { openTabsDialog() }
+        binding.btnNavTabs.setOnLongClickListener {
+            createNewTab(initialUrl = "", isClone = false)
+            toast("已新建标签页")
+            true
+        }
+        binding.btnNavStorage.setOnClickListener { openStorageDialog() }
+        binding.btnNavExtract.setOnClickListener { openCookieSheet() }
+    }
+
+    private fun updateUrlBarButtons() {
+        val focused = binding.etUrl.isFocused
+        binding.btnClearUrl.visibility =
+            if (focused && binding.etUrl.text.isNotEmpty()) View.VISIBLE else View.GONE
+        binding.btnRefresh.visibility = if (focused) View.GONE else View.VISIBLE
+    }
+
+    private fun showMainMenu(anchor: View) {
+        val tab = getActiveTab()
+        val hasPage = tab != null && tab.url.isNotBlank()
+        val popup = PopupMenu(this, anchor)
+        val m = popup.menu
+        m.add(0, 1, 0, "新建标签页")
+        m.add(0, 2, 1, "新建分身标签（另一个账号）")
+        if (hasPage) {
+            m.add(0, 3, 2, "页内查找")
+            m.add(0, 4, 3, "翻译为中文")
+            m.add(0, 5, 4, "缩放与翻译工具")
+        }
+        m.add(0, 6, 5, "桌面版网站").apply {
+            isCheckable = true
+            isChecked = tab?.isDesktop == true
+        }
+        if (hasPage) {
+            m.add(0, 7, 6, "添加到首页快捷入口")
+            m.add(0, 8, 7, "复制链接")
+            m.add(0, 9, 8, "分享网页")
+            m.add(0, 10, 9, "用其他浏览器打开")
+        }
+        m.add(0, 11, 10, "搜索引擎：${prefs.searchEngine}")
+        m.add(0, 12, 11, "清除当前身份的 Cookie 和缓存")
+
+        popup.setOnMenuItemClickListener { item ->
+            val wv = tab?.webView
+            when (item.itemId) {
+                1 -> createNewTab(initialUrl = "", isClone = false)
+                2 -> createNewTab(initialUrl = "", isClone = true)
+                3 -> openFindBar()
+                4 -> wv?.let {
+                    WebTranslator.translateInPage(it, "zh-CN")
+                    toast("正在将当前网页翻译为中文...")
+                }
+                5 -> openToolsDialog()
+                6 -> toggleActiveTabUserAgent()
+                7 -> tab?.let {
+                    val url = wv?.url ?: it.url
+                    if (prefs.addShortcut(it.title, url)) {
+                        renderShortcuts()
+                        toast("已添加到首页")
+                    } else {
+                        toast("首页已有这个网址")
+                    }
+                }
+                8 -> tab?.let { copyText(wv?.url ?: it.url, "已复制链接") }
+                9 -> tab?.let { shareText(wv?.url ?: it.url, it.title) }
+                10 -> tab?.let { openExternally(wv?.url ?: it.url) }
+                11 -> chooseSearchEngine()
+                12 -> showClearCookiesDialog()
             }
+            true
         }
+        popup.show()
+    }
 
-        // 底部导航栏：多窗口管理
-        binding.btnNavTabs.setOnClickListener {
-            openTabsDialog()
+    private fun chooseSearchEngine() {
+        val names = prefs.searchEngines.keys.toTypedArray()
+        val current = names.indexOf(prefs.searchEngine)
+        AlertDialog.Builder(this)
+            .setTitle("默认搜索引擎")
+            .setSingleChoiceItems(names, current) { d, which ->
+                prefs.searchEngine = names[which]
+                d.dismiss()
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    // ---------- 页内查找 ----------
+
+    private fun openFindBar() {
+        val wv = getActiveTab()?.webView ?: return
+        binding.layoutFindBar.visibility = View.VISIBLE
+        wv.setFindListener { activeMatch, numberOfMatches, _ ->
+            binding.tvFindCount.text =
+                if (numberOfMatches == 0) "0/0" else "${activeMatch + 1}/$numberOfMatches"
         }
+        binding.etFind.requestFocus()
+        val imm = getSystemService(INPUT_METHOD_SERVICE) as? InputMethodManager
+        imm?.showSoftInput(binding.etFind, InputMethodManager.SHOW_IMPLICIT)
+    }
 
-        // 底部导航栏：Cookie 储存库
-        binding.btnNavStorage.setOnClickListener {
-            openStorageDialog()
-        }
+    private fun closeFindBar() {
+        if (binding.layoutFindBar.visibility != View.VISIBLE) return
+        binding.layoutFindBar.visibility = View.GONE
+        binding.etFind.setText("")
+        tabs.forEach { it.webView?.clearMatches() }
+        hideKeyboard()
+    }
 
-        // 底部导航栏：核心提取胶囊按钮
-        binding.btnNavExtract.setOnClickListener {
-            openCookieSheet()
+    // ---------- 长按菜单 ----------
+
+    private fun showLongPressMenu(tab: TabItem): Boolean {
+        val wv = tab.webView ?: return false
+        val hit = wv.hitTestResult
+        val extra = hit.extra ?: return false
+        return when (hit.type) {
+            WebView.HitTestResult.SRC_ANCHOR_TYPE -> {
+                showLinkMenu(tab, extra, null)
+                true
+            }
+            WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE -> {
+                // extra 是图片地址，链接地址需要另外取
+                val handler = Handler(Looper.getMainLooper()) { msg ->
+                    val href = msg.data.getString("url")
+                    showLinkMenu(tab, href?.takeIf { it.isNotBlank() } ?: extra, extra)
+                    true
+                }
+                wv.requestFocusNodeHref(handler.obtainMessage())
+                true
+            }
+            WebView.HitTestResult.IMAGE_TYPE -> {
+                showLinkMenu(tab, null, extra)
+                true
+            }
+            else -> false // 其他情况交给 WebView（文字选择等）
         }
     }
+
+    private fun showLinkMenu(tab: TabItem, link: String?, image: String?) {
+        val labels = mutableListOf<String>()
+        val actions = mutableListOf<() -> Unit>()
+        if (link != null) {
+            labels += "在新标签页打开"
+            actions += { createNewTab(link, tab.isClone, tab.profileName, openerId = tab.id, desktop = tab.isDesktop) }
+            labels += "在后台新标签页打开"
+            actions += {
+                createNewTab(link, tab.isClone, tab.profileName, openerId = tab.id, switchTo = false, desktop = tab.isDesktop)
+                toast("已在后台打开")
+            }
+            labels += "在新分身中打开（另一个账号）"
+            actions += { createNewTab(link, isClone = true) }
+            labels += "复制链接"
+            actions += { copyText(link, "已复制链接") }
+            labels += "分享链接"
+            actions += { shareText(link, null) }
+        }
+        if (image != null) {
+            if (!image.startsWith("data:")) {
+                labels += "保存图片"
+                actions += { startDownload(tab, image, tab.webView?.settings?.userAgentString ?: defaultMobileUa, null, null) }
+                labels += "在新标签页查看图片"
+                actions += { createNewTab(image, tab.isClone, tab.profileName, openerId = tab.id, desktop = tab.isDesktop) }
+            }
+            labels += "复制图片链接"
+            actions += { copyText(image, "已复制图片链接") }
+        }
+        AlertDialog.Builder(this)
+            .setTitle((link ?: image).orEmpty().take(120))
+            .setItems(labels.toTypedArray()) { _, which -> actions[which]() }
+            .show()
+    }
+
+    // ---------- 下载 ----------
+
+    private fun startDownload(tab: TabItem, url: String, userAgent: String?, contentDisposition: String?, mimeType: String?) {
+        if (!url.startsWith("http://") && !url.startsWith("https://")) {
+            toast("该文件由网页脚本生成，暂不支持下载")
+            return
+        }
+        val action = {
+            try {
+                val fileName = URLUtil.guessFileName(url, contentDisposition, mimeType)
+                val request = DownloadManager.Request(Uri.parse(url)).apply {
+                    val cookies = (tab.customCookieManager ?: CookieManager.getInstance()).getCookie(url)
+                    if (!cookies.isNullOrBlank()) addRequestHeader("Cookie", cookies)
+                    addRequestHeader("User-Agent", userAgent ?: defaultMobileUa)
+                    tab.webView?.url?.let { addRequestHeader("Referer", it) }
+                    if (!mimeType.isNullOrBlank()) setMimeType(mimeType)
+                    setTitle(fileName)
+                    setDescription(Uri.parse(url).host)
+                    setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                    setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
+                }
+                (getSystemService(DOWNLOAD_SERVICE) as DownloadManager).enqueue(request)
+                toast("开始下载：$fileName")
+            } catch (e: Exception) {
+                toast("下载失败：${e.message}")
+            }
+        }
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED
+        ) {
+            pendingDownload = action
+            storagePermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+        } else {
+            action()
+        }
+    }
+
+    // ---------- 外部应用链接 ----------
+
+    private fun handleExternalScheme(tab: TabItem, url: String) {
+        val intent = try {
+            if (url.startsWith("intent:")) Intent.parseUri(url, Intent.URI_INTENT_SCHEME)
+            else Intent(Intent.ACTION_VIEW, Uri.parse(url))
+        } catch (e: Exception) {
+            return
+        }
+        intent.addCategory(Intent.CATEGORY_BROWSABLE)
+        intent.component = null
+        intent.selector = null
+        val fallback = intent.getStringExtra("browser_fallback_url")
+        // Android 11+ 的包可见性限制下可能查不到应用名，查不到也照常询问
+        val appLabel = try {
+            packageManager.resolveActivity(intent, 0)?.loadLabel(packageManager)?.toString()
+        } catch (e: Exception) {
+            null
+        }
+        AlertDialog.Builder(this)
+            .setMessage(if (appLabel != null) "网页想打开「$appLabel」" else "网页想打开外部应用")
+            .setPositiveButton("打开") { _, _ ->
+                try {
+                    startActivity(intent)
+                } catch (e: Exception) {
+                    if (!fallback.isNullOrBlank()) tab.webView?.loadUrl(fallback)
+                    else toast("没有可以打开此链接的应用")
+                }
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    // ---------- 全屏 ----------
+
+    private fun exitFullscreen() {
+        val view = customView ?: return
+        binding.layoutFullscreen.removeView(view)
+        binding.layoutFullscreen.visibility = View.GONE
+        customView = null
+        customViewCallback?.onCustomViewHidden()
+        customViewCallback = null
+        setSystemBarsHidden(false)
+    }
+
+    private fun setSystemBarsHidden(hidden: Boolean) {
+        val controller = WindowCompat.getInsetsController(window, binding.root)
+        if (hidden) {
+            controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            controller.hide(WindowInsetsCompat.Type.systemBars())
+        } else {
+            controller.show(WindowInsetsCompat.Type.systemBars())
+        }
+    }
+
+    // ---------- 弹窗 ----------
 
     private fun openTabsDialog() {
         val dialog = TabsBottomSheetDialog.newInstance()
         tabsDialog = dialog
-        dialog.onTabSelected = { tabId ->
-            switchTab(tabId)
-        }
-        dialog.onTabClosed = { tabId ->
-            closeTab(tabId)
-        }
-        dialog.onNewTabRequested = { isClone ->
-            createNewTab(initialUrl = "", isClone = isClone)
-        }
-        dialog.onDismissListener = {
-            tabsDialog = null
-        }
+        dialog.onTabSelected = { tabId -> switchTab(tabId) }
+        dialog.onTabClosed = { tabId -> requestCloseTab(tabId) }
+        dialog.onNewTabRequested = { isClone -> createNewTab(initialUrl = "", isClone = isClone) }
+        dialog.onDismissListener = { tabsDialog = null }
         dialog.show(supportFragmentManager, "TabsBottomSheet")
         dialog.setTabsData(tabs, activeTabId)
     }
@@ -545,55 +1107,41 @@ class MainActivity : AppCompatActivity() {
         dialog.show(supportFragmentManager, "StorageBottomSheet")
     }
 
-    private fun unlockViewportScaling(webView: WebView?) {
-        val js = """
-            (function() {
-                var meta = document.querySelector('meta[name="viewport"]');
-                if (meta) {
-                    var c = meta.getAttribute('content') || '';
-                    c = c.replace(/user-scalable\s*=\s*no/gi, 'user-scalable=yes')
-                         .replace(/maximum-scale\s*=\s*1(\.0)?/gi, 'maximum-scale=5.0');
-                    if (!c.includes('user-scalable')) {
-                        c += ', user-scalable=yes, maximum-scale=5.0';
-                    }
-                    meta.setAttribute('content', c);
-                }
-            })();
-        """.trimIndent()
-        webView?.evaluateJavascript(js, null)
-    }
-
     private fun openToolsDialog() {
         val tab = getActiveTab() ?: return
         val wv = tab.webView ?: return
         val currentTextZoom = wv.settings.textZoom
 
-        val dialog = com.cookiebox.app.ui.WebToolsBottomSheetDialog.newInstance(currentTextZoom)
+        val dialog = WebToolsBottomSheetDialog.newInstance(currentTextZoom)
         dialog.onZoomChanged = { zoom ->
             wv.settings.textZoom = zoom
         }
         dialog.onTranslateInPage = {
-            com.cookiebox.app.engine.WebTranslator.translateInPage(wv, "zh-CN")
-            Toast.makeText(this, "正在网页内即时翻译为中文...", Toast.LENGTH_SHORT).show()
+            WebTranslator.translateInPage(wv, "zh-CN")
+            toast("正在网页内即时翻译为中文...")
         }
         dialog.onTranslateProxy = {
             val currentUrl = wv.url ?: tab.url
             if (currentUrl.isNotBlank()) {
-                val proxyUrl = com.cookiebox.app.engine.WebTranslator.getTranslateProxyUrl(currentUrl, "zh-CN")
+                val proxyUrl = WebTranslator.getTranslateProxyUrl(currentUrl, "zh-CN")
                 loadUrlInTab(tab, proxyUrl)
-                Toast.makeText(this, "正在通过翻译阅读器载入...", Toast.LENGTH_SHORT).show()
+                toast("正在通过翻译阅读器载入...")
             }
         }
         dialog.onRestoreTranslate = {
             wv.reload()
-            Toast.makeText(this, "已重新加载并还原原网页", Toast.LENGTH_SHORT).show()
+            toast("已重新加载并还原原网页")
         }
         dialog.show(supportFragmentManager, "WebToolsBottomSheet")
     }
 
     private fun openCookieSheet() {
         val tab = getActiveTab()
-        val currentUrl = tab?.webView?.url ?: tab?.url ?: binding.etUrl.text.toString()
+        val currentUrl = tab?.webView?.url?.takeIf { it != "about:blank" } ?: tab?.url ?: binding.etUrl.text.toString()
+        if (currentUrl.isBlank()) {
+            toast("先打开并登录一个网站，再点提取")
+            return
+        }
         val currentTitle = tab?.title ?: ""
         val currentUa = tab?.webView?.settings?.userAgentString ?: defaultMobileUa
 
@@ -603,61 +1151,128 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showClearCookiesDialog() {
+        val activeTab = getActiveTab() ?: return
+        val who = if (activeTab.isClone) "这个分身" else "默认身份（所有非分身标签）"
         AlertDialog.Builder(this)
-            .setTitle(R.string.clear_all_cookies)
-            .setMessage(R.string.clear_confirm_message)
+            .setTitle("清除 Cookie 和缓存")
+            .setMessage("将清除$who 的全部 Cookie、网站存储和缓存，并登出其中所有账号。其他分身不受影响。")
             .setPositiveButton("立即清除") { _, _ ->
-                val activeTab = getActiveTab()
-                val cm = activeTab?.customCookieManager ?: CookieManager.getInstance()
+                val cm = activeTab.customCookieManager ?: CookieManager.getInstance()
                 cm.removeAllCookies {
                     cm.flush()
-                    tabs.forEach {
+                    clearWebStorage(activeTab.profileName)
+                    tabs.filter { it.profileName == activeTab.profileName }.forEach {
                         it.webView?.clearCache(true)
-                        it.webView?.clearHistory()
                     }
-                    Toast.makeText(this, R.string.clear_success, Toast.LENGTH_SHORT).show()
+                    toast(getString(R.string.clear_success))
                 }
             }
             .setNegativeButton("取消", null)
             .show()
     }
 
-    private fun setupShortcuts() {
-        val shortcuts = mapOf(
-            binding.chipBilibili to "https://m.bilibili.com",
-            binding.chipWeibo to "https://weibo.com",
-            binding.chipGithub to "https://github.com/login",
-            binding.chipBaidu to "https://www.baidu.com",
-            binding.chipZhihu to "https://www.zhihu.com",
-            binding.chipV2ex to "https://www.v2ex.com"
-        )
-        shortcuts.forEach { (chip, url) ->
-            chip.setOnClickListener {
-                getActiveTab()?.let { tab -> loadUrlInTab(tab, url) }
+    private fun clearWebStorage(profileName: String) {
+        try {
+            if (WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) {
+                ProfileStore.getInstance().getProfile(profileName)?.webStorage?.deleteAllData()
+            } else {
+                WebStorage.getInstance().deleteAllData()
             }
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
+
+    // ---------- 首页快捷入口 ----------
+
+    private fun renderShortcuts() {
+        val group = binding.chipGroupShortcuts
+        group.removeAllViews()
+        prefs.getShortcuts().forEach { sc ->
+            val chip = Chip(this).apply {
+                text = sc.title
+                isCheckable = false
+                setOnClickListener { getActiveTab()?.let { tab -> loadUrlInTab(tab, sc.url) } }
+                setOnLongClickListener {
+                    AlertDialog.Builder(this@MainActivity)
+                        .setTitle(sc.title)
+                        .setMessage(sc.url)
+                        .setPositiveButton("从首页删除") { _, _ ->
+                            prefs.removeShortcut(sc.url)
+                            renderShortcuts()
+                        }
+                        .setNegativeButton("取消", null)
+                        .show()
+                    true
+                }
+            }
+            group.addView(chip)
+        }
+    }
+
+    // ---------- 返回键 ----------
 
     private fun setupBackNavigation() {
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
-                val wv = getActiveTab()?.webView
-                if (wv != null && wv.canGoBack()) {
-                    wv.goBack()
-                } else if (binding.layoutShortcuts.visibility != View.VISIBLE) {
-                    binding.layoutShortcuts.visibility = View.VISIBLE
-                } else if (tabs.size > 1) {
-                    getActiveTab()?.let { closeTab(it.id) }
-                } else {
-                    finish()
+                val tab = getActiveTab()
+                val wv = tab?.webView
+                when {
+                    customView != null -> exitFullscreen()
+                    binding.layoutFindBar.visibility == View.VISIBLE -> closeFindBar()
+                    binding.etUrl.isFocused -> {
+                        binding.etUrl.clearFocus()
+                        hideKeyboard()
+                    }
+                    wv != null && wv.canGoBack() -> wv.goBack()
+                    // 由链接/弹窗打开的标签，退到底时关闭并回到原标签
+                    tab != null && tab.openerId != null && tabs.any { it.id == tab.openerId } -> requestCloseTab(tab.id)
+                    else -> {
+                        val now = System.currentTimeMillis()
+                        if (now - lastBackPressAt < 2000) {
+                            finish()
+                        } else {
+                            lastBackPressAt = now
+                            toast("再按一次退出")
+                        }
+                    }
                 }
             }
         })
     }
 
+    // ---------- 工具 ----------
+
+    private fun copyText(text: String, tip: String) {
+        val cm = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+        cm.setPrimaryClip(ClipData.newPlainText("CookieBox", text))
+        toast(tip)
+    }
+
+    private fun shareText(text: String, subject: String?) {
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TEXT, text)
+            if (!subject.isNullOrBlank()) putExtra(Intent.EXTRA_SUBJECT, subject)
+        }
+        startActivity(Intent.createChooser(intent, "分享到"))
+    }
+
+    private fun openExternally(url: String) {
+        try {
+            startActivity(Intent.createChooser(Intent(Intent.ACTION_VIEW, Uri.parse(url)), "用其他浏览器打开"))
+        } catch (e: Exception) {
+            toast("没有可用的浏览器")
+        }
+    }
+
+    private fun toast(msg: String) {
+        Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+    }
+
     private fun hideKeyboard() {
         val imm = getSystemService(INPUT_METHOD_SERVICE) as? InputMethodManager
-        imm?.hideSoftInputFromWindow(binding.etUrl.windowToken, 0)
+        imm?.hideSoftInputFromWindow(binding.root.windowToken, 0)
     }
 
     override fun onDestroy() {
