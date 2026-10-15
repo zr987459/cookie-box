@@ -7,6 +7,9 @@ on:
     branches: [ "main", "master" ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     name: Build & Package APK
@@ -35,3 +38,15 @@ jobs:
           name: CookieBox-debug-apk
           path: app/build/outputs/apk/debug/*.apk
           retention-days: 14
+
+      # 手机上 Artifacts 需要登录且是 zip，不好下载；同时发布到 Releases，直接点 APK 即可下载
+      - name: Publish APK to Releases
+        if: github.event_name != 'pull_request'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: CookieBox 构建 #${{ github.run_number }}（${{ github.ref_name }}）
+          target_commitish: ${{ github.sha }}
+          prerelease: ${{ github.ref_name != 'main' && github.ref_name != 'master' }}
+          files: app/build/outputs/apk/debug/*.apk
+          body: 由 GitHub Actions 自动构建。手机上点下面 Assets 里的 .apk 文件即可下载安装。
