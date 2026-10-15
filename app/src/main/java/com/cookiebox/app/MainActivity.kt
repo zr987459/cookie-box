@@ -878,8 +878,8 @@ class MainActivity : AppCompatActivity() {
                 2 -> createNewTab(initialUrl = "", isClone = true)
                 3 -> openFindBar()
                 4 -> wv?.let {
-                    WebTranslator.translateInPage(it, "zh-CN")
-                    toast("正在将当前网页翻译为中文...")
+                    toast("正在翻译为中文...")
+                    WebTranslator.translateInPage(it, "zh-CN") { msg -> toast(msg) }
                 }
                 5 -> openToolsDialog()
                 6 -> toggleActiveTabUserAgent()
@@ -1131,8 +1131,8 @@ class MainActivity : AppCompatActivity() {
             wv.settings.textZoom = zoom
         }
         dialog.onTranslateInPage = {
-            WebTranslator.translateInPage(wv, "zh-CN")
-            toast("正在网页内即时翻译为中文...")
+            toast("正在翻译为中文...")
+            WebTranslator.translateInPage(wv, "zh-CN") { msg -> toast(msg) }
         }
         dialog.onTranslateProxy = {
             val currentUrl = wv.url ?: tab.url
@@ -1143,8 +1143,8 @@ class MainActivity : AppCompatActivity() {
             }
         }
         dialog.onRestoreTranslate = {
-            wv.reload()
-            toast("已重新加载并还原原网页")
+            WebTranslator.restoreInPage(wv)
+            toast("已还原为原文")
         }
         dialog.show(supportFragmentManager, "WebToolsBottomSheet")
     }
