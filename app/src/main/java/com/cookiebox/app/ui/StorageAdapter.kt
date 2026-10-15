@@ -22,7 +22,7 @@ class StorageAdapter(
 
     private val allRecords = mutableListOf<SavedCookieRecord>()
     private val displayGroups = mutableListOf<WebsiteGroup>()
-    private val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
+    private val dateFormat = SimpleDateFormat("MM-dd HH:mm", Locale.getDefault())
 
     fun submitList(items: List<SavedCookieRecord>) {
         allRecords.clear()
@@ -50,10 +50,19 @@ class StorageAdapter(
             val group = groupMap.getOrPut(root) {
                 WebsiteGroup(
                     domain = if (record.domain.isNotEmpty()) record.domain else root,
-                    rootDomain = root
+                    rootDomain = root,
+                    isExpanded = false // 默认抽屉折叠收起，极致紧凑省空间
                 )
             }
             group.accounts.add(record)
+        }
+
+        // 若搜索过滤时，默认自动展开匹配的网站卡片，方便查看
+        if (query.isNotBlank()) {
+            groupMap.values.forEach { it.isExpanded = true }
+        } else if (groupMap.size == 1) {
+            // 若只有一个网站，自动展开
+            groupMap.values.firstOrNull()?.isExpanded = true
         }
 
         displayGroups.addAll(groupMap.values)
@@ -80,7 +89,16 @@ class StorageAdapter(
         fun bind(group: WebsiteGroup) {
             val displayDomain = if (group.rootDomain.isNotEmpty()) group.rootDomain else group.domain
             binding.tvWebsiteDomain.text = displayDomain
-            binding.chipAccountsCount.text = "${group.accounts.size} 个账号"
+            binding.tvAccountsCountBadge.text = "${group.accounts.size} 个账号"
+
+            // 抽屉展开状态更新
+            updateExpandState(group.isExpanded, animate = false)
+
+            // 点击卡片头部栏，触发抽屉展开/折叠
+            binding.layoutHeaderClickable.setOnClickListener {
+                group.isExpanded = !group.isExpanded
+                updateExpandState(group.isExpanded, animate = true)
+            }
 
             // 动态填充该网站下的所有账号行
             binding.layoutAccountsContainer.removeAllViews()
@@ -92,11 +110,11 @@ class StorageAdapter(
                 )
 
                 rowBinding.tvAccountName.text = if (account.title.isNotBlank()) account.title else "账号 ${index + 1}"
-                rowBinding.chipAccountCookies.text = "${account.count} 项"
-                rowBinding.tvAccountTime.text = "储存时间: ${dateFormat.format(Date(account.timestamp))}"
+                rowBinding.tvAccountCookiesBadge.text = "${account.count} 项"
+                rowBinding.tvAccountTime.text = dateFormat.format(Date(account.timestamp))
 
-                // 最后一个账号隐藏底部分割线
-                rowBinding.dividerAccount.visibility = if (index == group.accounts.size - 1) View.GONE else View.VISIBLE
+                // 首项账号隐藏顶部分割线
+                rowBinding.topDividerAccount.visibility = if (index == 0) View.GONE else View.VISIBLE
 
                 rowBinding.btnLaunchAccount.setOnClickListener {
                     onLaunchWithCookie(account)
@@ -115,6 +133,16 @@ class StorageAdapter(
                 }
 
                 binding.layoutAccountsContainer.addView(rowBinding.root)
+            }
+        }
+
+        private fun updateExpandState(expanded: Boolean, animate: Boolean) {
+            binding.layoutAccountsContainer.visibility = if (expanded) View.VISIBLE else View.GONE
+            val targetRotation = if (expanded) 180f else 0f
+            if (animate) {
+                binding.ivExpandArrow.animate().rotation(targetRotation).setDuration(200).start()
+            } else {
+                binding.ivExpandArrow.rotation = targetRotation
             }
         }
     }
