@@ -42,6 +42,8 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.webkit.ProfileStore
+import androidx.webkit.UserAgentMetadata
+import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import com.cookiebox.app.databinding.ActivityMainBinding
@@ -234,6 +236,7 @@ class MainActivity : AppCompatActivity() {
             defaultMobileUa = cleanUserAgent(settings.userAgentString)
         }
         settings.userAgentString = if (desktop) DESKTOP_UA else defaultMobileUa
+        applyBrowserIdentity(settings, desktop)
 
         settings.javaScriptEnabled = true
         settings.domStorageEnabled = true
@@ -449,6 +452,46 @@ class MainActivity : AppCompatActivity() {
         }
 
         return newTab
+    }
+
+    /**
+     * 让 Google 等网站把本浏览器当作普通 Chrome：
+     * 1. 去掉 WebView 默认附带的 X-Requested-With（会暴露应用包名）
+     * 2. 改写 Client Hints（Sec-CH-UA / navigator.userAgentData），去掉 "Android WebView" 品牌标记
+     */
+    private fun applyBrowserIdentity(settings: WebSettings, desktop: Boolean) {
+        try {
+            if (WebViewFeature.isFeatureSupported(WebViewFeature.REQUESTED_WITH_HEADER_ALLOW_LIST)) {
+                WebSettingsCompat.setRequestedWithHeaderOriginAllowList(settings, emptySet())
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        try {
+            if (WebViewFeature.isFeatureSupported(WebViewFeature.USER_AGENT_METADATA)) {
+                val ua = settings.userAgentString
+                val m = Regex("Chrome/(\\d+)([\\d.]*)").find(ua)
+                val major = m?.groupValues?.get(1) ?: "124"
+                val full = m?.let { it.groupValues[1] + it.groupValues[2] } ?: "$major.0.0.0"
+                val brands = listOf(
+                    UserAgentMetadata.BrandVersion.Builder().setBrand("Google Chrome").setMajorVersion(major).setFullVersion(full).build(),
+                    UserAgentMetadata.BrandVersion.Builder().setBrand("Chromium").setMajorVersion(major).setFullVersion(full).build(),
+                    UserAgentMetadata.BrandVersion.Builder().setBrand("Not_A Brand").setMajorVersion("24").setFullVersion("24.0.0.0").build()
+                )
+                val builder = UserAgentMetadata.Builder()
+                    .setBrandVersionList(brands)
+                    .setFullVersion(full)
+                    .setMobile(!desktop)
+                if (desktop) {
+                    builder.setPlatform("Windows").setPlatformVersion("10.0.0").setModel("").setArchitecture("x86").setBitness(64)
+                } else {
+                    builder.setPlatform("Android").setPlatformVersion(Build.VERSION.RELEASE ?: "14").setModel(Build.MODEL ?: "")
+                }
+                WebSettingsCompat.setUserAgentMetadata(settings, builder.build())
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     private fun setupProfileForTab(tab: TabItem, webView: WebView) {
@@ -733,9 +776,11 @@ class MainActivity : AppCompatActivity() {
 
         if (tab.isDesktop) {
             settings.userAgentString = DESKTOP_UA
+            applyBrowserIdentity(settings, true)
             toast(getString(R.string.current_ua_desktop))
         } else {
             settings.userAgentString = defaultMobileUa
+            applyBrowserIdentity(settings, false)
             toast(getString(R.string.current_ua_mobile))
         }
 

@@ -274,115 +274,115 @@
     </FrameLayout>
 
     <!-- 底部现代化导航操控栏 -->
-    <com.google.android.material.bottomappbar.BottomAppBar
+    <!-- 底部导航栏：普通容器 + 等分权重，避免 Toolbar 内边距把按钮挤出屏幕 -->
+    <LinearLayout
         android:id="@+id/bottomAppBar"
         android:layout_width="match_parent"
         android:layout_height="56dp"
         android:layout_gravity="bottom"
-        android:backgroundTint="@color/surface"
-        app:elevation="6dp"
-        app:paddingStart="0dp"
-        app:paddingEnd="0dp">
+        android:background="@color/surface"
+        android:elevation="6dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="4dp"
+        android:paddingEnd="8dp">
 
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:gravity="center_vertical"
-            android:orientation="horizontal"
-            android:paddingHorizontal="8dp">
+        <ImageButton
+            android:id="@+id/btnNavBack"
+            android:layout_width="0dp"
+            android:layout_height="46dp"
+            android:layout_weight="1"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="后退"
+            android:padding="11dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_arrow_back" />
 
-            <!-- 后退 -->
-            <ImageButton
-                android:id="@+id/btnNavBack"
-                android:layout_width="44dp"
-                android:layout_height="44dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="后退"
-                android:padding="10dp"
-                android:src="@drawable/ic_arrow_back" />
+        <ImageButton
+            android:id="@+id/btnNavForward"
+            android:layout_width="0dp"
+            android:layout_height="46dp"
+            android:layout_weight="1"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="前进"
+            android:padding="11dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_arrow_forward" />
 
-            <!-- 前进 -->
-            <ImageButton
-                android:id="@+id/btnNavForward"
-                android:layout_width="44dp"
-                android:layout_height="44dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="前进"
-                android:padding="10dp"
-                android:src="@drawable/ic_arrow_forward" />
+        <ImageButton
+            android:id="@+id/btnNavHome"
+            android:layout_width="0dp"
+            android:layout_height="46dp"
+            android:layout_weight="1"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="主页"
+            android:padding="11dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_home" />
 
-            <!-- 主页 -->
-            <ImageButton
-                android:id="@+id/btnNavHome"
-                android:layout_width="44dp"
-                android:layout_height="44dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="主页"
-                android:padding="10dp"
-                android:src="@drawable/ic_home" />
+        <ImageButton
+            android:id="@+id/btnNavStorage"
+            android:layout_width="0dp"
+            android:layout_height="46dp"
+            android:layout_weight="1"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Cookie 储存库"
+            android:padding="11dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_storage" />
 
-            <View
-                android:layout_width="0dp"
-                android:layout_height="1dp"
-                android:layout_weight="1" />
+        <!-- 多窗口标签切换 (带窗口数量角标) -->
+        <FrameLayout
+            android:id="@+id/btnNavTabs"
+            android:layout_width="0dp"
+            android:layout_height="46dp"
+            android:layout_weight="1"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:clickable="true"
+            android:contentDescription="多窗口"
+            android:focusable="true">
 
-            <!-- 储存库管理 -->
-            <ImageButton
-                android:id="@+id/btnNavStorage"
-                android:layout_width="44dp"
-                android:layout_height="44dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="Cookie 储存库"
-                android:padding="10dp"
-                android:src="@drawable/ic_storage" />
+            <ImageView
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:layout_gravity="center"
+                android:importantForAccessibility="no"
+                android:src="@drawable/ic_tabs" />
 
-            <!-- 多窗口标签切换 (带窗口数量角标) -->
-            <FrameLayout
-                android:id="@+id/btnNavTabs"
-                android:layout_width="44dp"
-                android:layout_height="44dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:clickable="true"
-                android:focusable="true">
-
-                <ImageView
-                    android:layout_width="22dp"
-                    android:layout_height="22dp"
-                    android:layout_gravity="center"
-                    android:contentDescription="多窗口"
-                    android:src="@drawable/ic_tabs" />
-
-                <TextView
-                    android:id="@+id/tvTabBadge"
-                    android:layout_width="16dp"
-                    android:layout_height="16dp"
-                    android:layout_gravity="top|end"
-                    android:layout_marginTop="6dp"
-                    android:layout_marginEnd="6dp"
-                    android:background="@drawable/bg_search_box"
-                    android:gravity="center"
-                    android:text="1"
-                    android:textColor="@color/primary"
-                    android:textSize="9sp"
-                    android:textStyle="bold" />
-            </FrameLayout>
-
-            <!-- 核心提取胶囊按钮 -->
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnNavExtract"
-                style="@style/Widget.Material3.Button"
+            <TextView
+                android:id="@+id/tvTabBadge"
                 android:layout_width="wrap_content"
-                android:layout_height="42dp"
-                android:layout_marginStart="6dp"
-                android:text="@string/extract_cookies"
-                android:textColor="@color/on_primary"
-                android:textSize="13sp"
-                app:backgroundTint="@color/primary"
-                app:cornerRadius="21dp"
-                app:icon="@drawable/ic_cookie"
-                app:iconTint="@color/on_primary" />
-        </LinearLayout>
-    </com.google.android.material.bottomappbar.BottomAppBar>
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:gravity="center"
+                android:text="1"
+                android:textColor="@color/on_surface_variant"
+                android:textSize="10sp"
+                android:textStyle="bold" />
+        </FrameLayout>
+
+        <!-- 核心提取胶囊按钮 -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnNavExtract"
+            style="@style/Widget.Material3.Button"
+            android:layout_width="wrap_content"
+            android:layout_height="44dp"
+            android:layout_marginStart="4dp"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            android:minWidth="0dp"
+            android:paddingStart="14dp"
+            android:paddingEnd="16dp"
+            android:text="@string/extract_cookies"
+            android:textColor="@color/on_primary"
+            android:textSize="14sp"
+            app:backgroundTint="@color/primary"
+            app:cornerRadius="22dp"
+            app:icon="@drawable/ic_cookie"
+            app:iconPadding="6dp"
+            app:iconSize="18dp"
+            app:iconTint="@color/on_primary" />
+    </LinearLayout>
 
     <!-- 网页视频全屏容器 -->
     <FrameLayout
