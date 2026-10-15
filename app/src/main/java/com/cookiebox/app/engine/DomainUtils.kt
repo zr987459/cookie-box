@@ -49,6 +49,9 @@ object DomainUtils {
                     host.startsWith("passport.") ||
                     host.startsWith("login.")
 
+            // 谷歌登录流程的 URL 带一次性参数，重新打开会 400；一律改为登录后的落地页
+            if (root == "google.com") return "https://myaccount.google.com/"
+
             if (isLoginPage) {
                 // 常见网站移动端首页适配
                 return when (root) {

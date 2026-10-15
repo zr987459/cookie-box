@@ -691,27 +691,20 @@ class MainActivity : AppCompatActivity() {
                     item.name.startsWith("__Host-") ||
                     item.isSecure
 
-            val secureAttr = if (isSecureCookie) "; Secure; SameSite=Lax" else ""
+            val secureAttr = if (isSecureCookie) "; Secure" else ""
 
             if (item.name.startsWith("__Host-")) {
-                // RFC 6265bis 规范：__Host- 前缀绝对不能携带 Domain 属性，必须带有 Path=/ 和 Secure
-                val hostCookie = "${item.name}=${item.value}; Path=/; Secure"
-                writeList.add(Pair(cleanEntryUrl, hostCookie))
+                // RFC 6265bis：__Host- 前缀绝不能带 Domain，必须 Path=/ 且 Secure，只能按主机写
+                writeList.add(Pair(cleanEntryUrl, "${item.name}=${item.value}; Path=/; Secure"))
             } else {
-                // 基础路径注入
-                val baseCookie = "${item.name}=${item.value}; Path=/$secureAttr"
-                writeList.add(Pair(cleanEntryUrl, baseCookie))
-
-                // 根域名注入（保证子域和 API 均可携带，如 hark.com / bilibili.com）
-                // 排除 accounts.google. 等高敏子域，防止因作用域冲突触发 Google CookieMismatch 拦截
-                val isStrictSubdomain = record.domain.startsWith("accounts.google.") ||
-                        record.domain.startsWith("login.")
-                if (rootDomain.isNotEmpty() && !isStrictSubdomain) {
-                    val domainCookie = "${item.name}=${item.value}; Domain=.$rootDomain; Path=/$secureAttr"
-                    writeList.add(Pair(domainUrl, domainCookie))
+                // 1) 按当前主机写一份
+                writeList.add(Pair(cleanEntryUrl, "${item.name}=${item.value}; Path=/$secureAttr"))
+                // 2) 按根域名写一份，保证所有子域和 API 都能带上（谷歌的 SID / __Secure-1PSID 等会话 Cookie
+                //    必须落在 .google.com 上，否则会提示“Cookie 设置存在问题”而登录失败）
+                if (rootDomain.isNotEmpty()) {
+                    writeList.add(Pair(domainUrl, "${item.name}=${item.value}; Domain=.$rootDomain; Path=/$secureAttr"))
                 }
             }
-        }
 
         pendingCount = writeList.size
 
