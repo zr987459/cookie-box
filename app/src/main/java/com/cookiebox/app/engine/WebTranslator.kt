@@ -1,8 +1,12 @@
 package com.cookiebox.app.engine
 
+import android.annotation.SuppressLint
+import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import android.webkit.JavascriptInterface
 import android.webkit.WebView
+import android.webkit.WebViewClient
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
@@ -83,32 +87,133 @@ object WebTranslator {
                 onResult?.invoke("没有找到需要翻译的新内容")
                 return@evaluateJavascript
             }
+            val list = batches(items)
+            var okCount = 0
+            fun step(index: Int) {
+                if (index >= list.size) {
+                    onResult?.invoke(if (okCount > 0) "翻译完成" else "翻译失败：接口没有返回内容")
+                    return
+                }
+                val batch = list[index]
+                translateAsync(webView.context, batch.map { it.second }, targetLanguage) { translated, error ->
+                    if (translated == null) {
+                        onResult?.invoke(
+                            if (okCount > 0) "部分内容已翻译（$error）"
+                            else "翻译失败：$error"
+                        )
+                        return@translateAsync
+                    }
+                    val apply = JSONArray()
+                    batch.forEachIndexed { i, (id, _) ->
+                        val t = translated.getOrNull(i)
+                        if (!t.isNullOrBlank()) apply.put(JSONArray().put(id).put(t))
+                    }
+                    okCount += apply.length()
+                    if (webView.isAttachedToWindow || webView.parent != null) {
+                        webView.evaluateJavascript(applyJs(apply), null)
+                    }
+                    step(index + 1)
+                }
+            }
+            step(0)
+        }
+    }
+
+    /**
+     * 翻译请求走 WebView 的网络栈（和网页同一套网络/代理/VPN，用户能打开网页就能翻译），
+     * 失败再退回 App 原生请求 + 微软翻译。回调均在主线程。
+     */
+    private fun translateAsync(
+        context: Context,
+        texts: List<String>,
+        target: String,
+        cb: (List<String?>?, String?) -> Unit
+    ) {
+        FetchBridge.googleTranslate(context, texts, target) { result, webErr ->
+            if (result != null) {
+                cb(result, null)
+                return@googleTranslate
+            }
             Thread {
-                var okCount = 0
-                var error: String? = null
-                for (batch in batches(items)) {
-                    try {
-                        val translated = translateTexts(batch.map { it.second }, targetLanguage)
-                        val apply = JSONArray()
-                        batch.forEachIndexed { i, (id, _) ->
-                            val t = translated.getOrNull(i)
-                            if (!t.isNullOrBlank()) apply.put(JSONArray().put(id).put(t))
+                try {
+                    val r = translateTexts(texts, target)
+                    main.post { cb(r, null) }
+                } catch (e: Exception) {
+                    main.post { cb(null, "网页通道($webErr)；${e.message}") }
+                }
+            }.start()
+        }
+    }
+
+    /** 隐藏的辅助 WebView：在一个无 CSP 的空白页里用 fetch 调用翻译接口（接口允许跨域） */
+    @SuppressLint("SetJavaScriptEnabled", "StaticFieldLeak")
+    private object FetchBridge {
+        private var helper: WebView? = null
+        private var ready = false
+        private val queue = mutableListOf<() -> Unit>()
+        private val callbacks = HashMap<Int, (String?, String?) -> Unit>()
+        private var nextId = 1
+
+        class Js {
+            @JavascriptInterface
+            fun onResult(id: Int, text: String) {
+                main.post { callbacks.remove(id)?.invoke(text, null) }
+            }
+
+            @JavascriptInterface
+            fun onError(id: Int, err: String) {
+                main.post { callbacks.remove(id)?.invoke(null, err) }
+            }
+        }
+
+        private fun ensure(context: Context, then: () -> Unit) {
+            if (ready) { then(); return }
+            queue.add(then)
+            if (helper != null) return
+            val wv = WebView(context.applicationContext)
+            wv.settings.javaScriptEnabled = true
+            wv.addJavascriptInterface(Js(), "CBT")
+            wv.webViewClient = object : WebViewClient() {
+                override fun onPageFinished(view: WebView?, url: String?) {
+                    if (ready) return
+                    ready = true
+                    val q = queue.toList(); queue.clear()
+                    q.forEach { it() }
+                }
+            }
+            helper = wv
+            wv.loadDataWithBaseURL("https://cookiebox.local/", "<html><body></body></html>", "text/html", "utf-8", null)
+        }
+
+        fun googleTranslate(
+            context: Context,
+            texts: List<String>,
+            target: String,
+            cb: (List<String?>?, String?) -> Unit
+        ) {
+            ensure(context) {
+                val id = nextId++
+                var finished = false
+                callbacks[id] = { body, err ->
+                    if (!finished) {
+                        finished = true
+                        if (body == null) cb(null, err)
+                        else try {
+                            cb(parseGoogle(body, texts.size), null)
+                        } catch (e: Exception) {
+                            cb(null, e.message)
                         }
-                        okCount += apply.length()
-                        val js = applyJs(apply)
-                        main.post { webView.evaluateJavascript(js, null) }
-                    } catch (e: Exception) {
-                        error = e.message ?: e.javaClass.simpleName
-                        break
                     }
                 }
-                val msg = when {
-                    okCount > 0 && error == null -> "翻译完成"
-                    okCount > 0 -> "部分内容已翻译（网络中断：$error）"
-                    else -> "翻译失败：$error，可在「网页工具」里改用翻译阅读器"
-                }
-                main.post { onResult?.invoke(msg) }
-            }.start()
+                // 超时保护
+                main.postDelayed({ callbacks.remove(id)?.invoke(null, "超时") }, 20000)
+                val body = texts.joinToString("&") { "q=" + URLEncoder.encode(it, "UTF-8") }
+                val url = "https://translate.googleapis.com/translate_a/t?client=gtx&sl=auto&tl=$target&dt=t&format=text"
+                val js = "fetch(${JSONObject.quote(url)},{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},body:${JSONObject.quote(body)}})" +
+                        ".then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.text();})" +
+                        ".then(function(t){CBT.onResult($id,t);}).catch(function(e){CBT.onError($id,String(e&&e.message||e));});"
+                helper?.evaluateJavascript(js, null)
+            }
         }
     }
 
@@ -203,6 +308,10 @@ object WebTranslator {
             "https://translate.googleapis.com/translate_a/t?client=gtx&sl=auto&tl=$target&dt=t&format=text",
             "POST", body, "application/x-www-form-urlencoded;charset=UTF-8"
         )
+        return parseGoogle(resp, texts.size)
+    }
+
+    private fun parseGoogle(resp: String, expected: Int): List<String?> {
         val arr = JSONArray(resp)
         val out = (0 until arr.length()).map { i ->
             when (val v = arr.get(i)) {
@@ -212,8 +321,8 @@ object WebTranslator {
             }
         }
         // 只有一条时接口可能返回 ["译文","en"]，要特别处理
-        if (texts.size == 1 && out.size == 2 && arr.opt(0) is String) return listOf(out[0])
-        if (out.size != texts.size) throw Exception("返回数量不符")
+        if (expected == 1 && arr.opt(0) is String) return listOf(out[0])
+        if (out.size != expected) throw Exception("返回数量不符")
         return out
     }
 
@@ -258,6 +367,7 @@ object WebTranslator {
             conn.connectTimeout = 8000
             conn.readTimeout = 15000
             conn.setRequestProperty("User-Agent", UA)
+            conn.setRequestProperty("Connection", "close")
             if (contentType != null) conn.setRequestProperty("Content-Type", contentType)
             if (auth != null) conn.setRequestProperty("Authorization", auth)
             if (body != null) {
