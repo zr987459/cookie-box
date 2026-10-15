@@ -18,6 +18,9 @@ import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.webkit.ProfileStore
+import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
 import com.cookiebox.app.databinding.ActivityMainBinding
 import com.cookiebox.app.engine.DomainUtils
 import com.cookiebox.app.model.SavedCookieRecord
@@ -47,18 +50,18 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        // 默认新建一个初始标签页
-        createNewTab(initialUrl = "")
+        // 默认新建一个初始主身份标签页
+        createNewTab(initialUrl = "", isClone = false)
 
         setupListeners()
         setupShortcuts()
         setupBackNavigation()
     }
 
-    // ==================== 多窗口标签管理 (标准 Chromium 多标签机制，零会话丢失) ====================
+    // ==================== 多窗口与多账号网页分身 ====================
 
     @SuppressLint("SetJavaScriptEnabled")
-    private fun createNewTab(initialUrl: String = ""): TabItem {
+    private fun createNewTab(initialUrl: String = "", isClone: Boolean = false): TabItem {
         val tabId = UUID.randomUUID().toString()
         val webView = WebView(this).apply {
             layoutParams = ViewGroup.LayoutParams(
@@ -82,21 +85,28 @@ class MainActivity : AppCompatActivity() {
         settings.displayZoomControls = false
         settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
 
-        // 开启多窗口支持与弹窗代理，适配 target="_blank"
+        // 开启多窗口支持与脚本弹窗代理，适配 target="_blank"
         settings.setSupportMultipleWindows(true)
         settings.javaScriptCanOpenWindowsAutomatically = true
 
-        val cookieManager = CookieManager.getInstance()
-        cookieManager.setAcceptCookie(true)
-        cookieManager.setAcceptThirdPartyCookies(webView, true)
+        val profileName = if (isClone) {
+            "Profile_Clone_${UUID.randomUUID().toString().take(8)}"
+        } else {
+            "Profile_Default"
+        }
 
         val newTab = TabItem(
             id = tabId,
-            title = "新标签页",
+            title = if (isClone) "网页分身" else "新标签页",
             url = initialUrl,
             isDesktop = false,
+            isClone = isClone,
+            profileName = profileName,
             webView = webView
         )
+
+        // 核心：基于 AndroidX WebKit 架构实现真正的引擎级分身隔离 (各 Profile 持有完全独立的 Cookie 与 Storage)
+        setupProfileForTab(newTab, webView)
 
         webView.webChromeClient = object : WebChromeClient() {
             override fun onReceivedTitle(view: WebView?, title: String?) {
@@ -127,7 +137,7 @@ class MainActivity : AppCompatActivity() {
                 resultMsg: Message?
             ): Boolean {
                 if (resultMsg == null) return false
-                val spawnedTab = createNewTab(initialUrl = "")
+                val spawnedTab = createNewTab(initialUrl = "", isClone = newTab.isClone)
                 val transport = resultMsg.obj as? WebView.WebViewTransport
                 if (transport != null) {
                     transport.webView = spawnedTab.webView
@@ -168,7 +178,8 @@ class MainActivity : AppCompatActivity() {
             }
 
             override fun onPageFinished(view: WebView?, url: String?) {
-                CookieManager.getInstance().flush()
+                val cm = newTab.customCookieManager ?: CookieManager.getInstance()
+                cm.flush()
                 url?.let {
                     newTab.url = it
                     if (newTab.id == activeTabId) {
@@ -189,11 +200,31 @@ class MainActivity : AppCompatActivity() {
         return newTab
     }
 
+    private fun setupProfileForTab(tab: TabItem, webView: WebView) {
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) {
+            try {
+                val profileStore = ProfileStore.getInstance()
+                val profile = profileStore.getOrCreateProfile(tab.profileName)
+                WebViewCompat.setProfile(webView, tab.profileName)
+                tab.customCookieManager = profile.cookieManager
+            } catch (e: Exception) {
+                e.printStackTrace()
+                tab.customCookieManager = CookieManager.getInstance()
+            }
+        } else {
+            tab.customCookieManager = CookieManager.getInstance()
+        }
+
+        val cm = tab.customCookieManager ?: CookieManager.getInstance()
+        cm.setAcceptCookie(true)
+        cm.setAcceptThirdPartyCookies(webView, true)
+    }
+
     private fun switchTab(targetTabId: String) {
         val targetTab = tabs.find { it.id == targetTabId } ?: return
         activeTabId = targetTabId
 
-        // 仅切换可见视图容器，绝不清除 Cookie，保持所有标签会话长效登录！
+        // 仅切换可见容器，各 Profile 保持完全独立的 Cookie 会话，绝不清除，绝不掉线！
         binding.layoutWebContainer.removeAllViews()
         targetTab.webView?.let {
             if (it.parent != null) {
@@ -226,10 +257,20 @@ class MainActivity : AppCompatActivity() {
 
         val removingTab = tabs[targetIndex]
         removingTab.webView?.destroy()
+
+        // 释放分身 Profile 存储资源
+        if (removingTab.isClone && WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) {
+            try {
+                ProfileStore.getInstance().deleteProfile(removingTab.profileName)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+
         tabs.removeAt(targetIndex)
 
         if (tabs.isEmpty()) {
-            createNewTab(initialUrl = "")
+            createNewTab(initialUrl = "", isClone = false)
         } else {
             if (tabId == activeTabId) {
                 val nextIndex = if (targetIndex >= tabs.size) tabs.size - 1 else targetIndex
@@ -272,7 +313,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * 根据保存的 Cookie 凭据，一键写入 Cookie 并直达该网站登录态 (彻底解决进入失败与死锁问题)
+     * 根据保存的 Cookie 凭据，一键写入 Cookie 并直达该网站登录态 (完美支持 __Secure- / __Host- 前缀)
      */
     private fun launchWithSavedCookie(record: SavedCookieRecord) {
         val cleanEntryUrl = DomainUtils.getCleanEntryUrl(record.url, record.domain)
@@ -284,31 +325,67 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        val cookieManager = CookieManager.getInstance()
+        // 选择当前活动的空白标签或新建标签
+        val activeTab = getActiveTab()
+        val targetTab = if (activeTab != null && (activeTab.url.isBlank() || activeTab.url == "about:blank")) {
+            activeTab
+        } else {
+            createNewTab(initialUrl = "", isClone = false)
+        }
+
+        val cookieManager = targetTab.customCookieManager ?: CookieManager.getInstance()
         cookieManager.setAcceptCookie(true)
+        targetTab.webView?.let { cookieManager.setAcceptThirdPartyCookies(it, true) }
 
-        // 直接写入到目标 URL 以及根域名，避免异步计数器被中断导致无法跳转
+        val isHttps = cleanEntryUrl.startsWith("https://")
+        val domainUrl = if (rootDomain.isNotEmpty()) "https://$rootDomain" else cleanEntryUrl
+
+        var pendingCount = 0
+        val writeList = mutableListOf<Pair<String, String>>()
+
         for (item in cookies) {
-            val baseCookie = "${item.name}=${item.value}; Path=/"
-            cookieManager.setCookie(cleanEntryUrl, baseCookie)
+            val isSecureCookie = isHttps ||
+                    item.name.startsWith("__Secure-") ||
+                    item.name.startsWith("__Host-") ||
+                    item.isSecure
 
-            if (rootDomain.isNotBlank()) {
-                val domainCookie = "${item.name}=${item.value}; Domain=.$rootDomain; Path=/"
-                cookieManager.setCookie("https://$rootDomain", domainCookie)
-                cookieManager.setCookie(cleanEntryUrl, domainCookie)
+            val secureAttr = if (isSecureCookie) "; Secure; SameSite=Lax" else ""
+
+            if (item.name.startsWith("__Host-")) {
+                // RFC 6265bis 规范：__Host- 前缀绝对不能携带 Domain 属性，必须带有 Path=/ 和 Secure
+                val hostCookie = "${item.name}=${item.value}; Path=/; Secure"
+                writeList.add(Pair(cleanEntryUrl, hostCookie))
+            } else {
+                // 基础路径注入
+                val baseCookie = "${item.name}=${item.value}; Path=/$secureAttr"
+                writeList.add(Pair(cleanEntryUrl, baseCookie))
+
+                // 根域名注入（保证子域和 API 均可携带，如 hark.com / bilibili.com）
+                if (rootDomain.isNotEmpty()) {
+                    val domainCookie = "${item.name}=${item.value}; Domain=.$rootDomain; Path=/$secureAttr"
+                    writeList.add(Pair(domainUrl, domainCookie))
+                }
             }
         }
-        cookieManager.flush()
 
-        // 立即跳转至目标网站，零阻塞！
-        val current = getActiveTab()
-        if (current != null && (current.url.isBlank() || current.url == "about:blank")) {
-            loadUrlInTab(current, cleanEntryUrl)
-        } else {
-            createNewTab(initialUrl = cleanEntryUrl)
+        pendingCount = writeList.size
+
+        val onAllDone = {
+            cookieManager.flush()
+            binding.root.post {
+                loadUrlInTab(targetTab, cleanEntryUrl)
+                Toast.makeText(this, "已写入 ${cookies.size} 项 Cookie，正在免密直达 ${record.domain}", Toast.LENGTH_SHORT).show()
+            }
         }
 
-        Toast.makeText(this, "已写入 Cookie，正在免密直达 ${record.domain}", Toast.LENGTH_SHORT).show()
+        for ((target, cookieStr) in writeList) {
+            cookieManager.setCookie(target, cookieStr) {
+                pendingCount--
+                if (pendingCount <= 0) {
+                    onAllDone()
+                }
+            }
+        }
     }
 
     private fun updateSecurityIcon(url: String) {
@@ -412,8 +489,8 @@ class MainActivity : AppCompatActivity() {
         dialog.onTabClosed = { tabId ->
             closeTab(tabId)
         }
-        dialog.onNewTabRequested = { _ ->
-            createNewTab(initialUrl = "")
+        dialog.onNewTabRequested = { isClone ->
+            createNewTab(initialUrl = "", isClone = isClone)
         }
         dialog.onDismissListener = {
             tabsDialog = null
@@ -431,6 +508,7 @@ class MainActivity : AppCompatActivity() {
         dialog.onViewRecordDetails = { record ->
             val ua = getActiveTab()?.webView?.settings?.userAgentString ?: defaultMobileUa
             val detailDialog = CookieBottomSheetDialog.newInstanceFromRecord(record, ua)
+            detailDialog.customCookieManager = getActiveTab()?.customCookieManager
             detailDialog.show(supportFragmentManager, "CookieDetailSheet")
         }
         dialog.show(supportFragmentManager, "StorageBottomSheet")
@@ -443,6 +521,7 @@ class MainActivity : AppCompatActivity() {
         val currentUa = tab?.webView?.settings?.userAgentString ?: defaultMobileUa
 
         val dialog = CookieBottomSheetDialog.newInstance(currentUrl, currentTitle, currentUa)
+        dialog.customCookieManager = tab?.customCookieManager
         dialog.show(supportFragmentManager, "CookieBottomSheet")
     }
 
@@ -451,9 +530,10 @@ class MainActivity : AppCompatActivity() {
             .setTitle(R.string.clear_all_cookies)
             .setMessage(R.string.clear_confirm_message)
             .setPositiveButton("立即清除") { _, _ ->
-                val cookieManager = CookieManager.getInstance()
-                cookieManager.removeAllCookies {
-                    cookieManager.flush()
+                val activeTab = getActiveTab()
+                val cm = activeTab?.customCookieManager ?: CookieManager.getInstance()
+                cm.removeAllCookies {
+                    cm.flush()
                     tabs.forEach {
                         it.webView?.clearCache(true)
                         it.webView?.clearHistory()

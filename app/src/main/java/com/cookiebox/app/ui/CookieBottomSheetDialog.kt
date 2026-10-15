@@ -11,6 +11,7 @@ import android.text.TextWatcher
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.webkit.CookieManager
 import android.widget.Toast
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.cookiebox.app.R
@@ -35,6 +36,8 @@ class CookieBottomSheetDialog : BottomSheetDialogFragment() {
     private var preloadedJson: String? = null
     private var cookieList: List<CookieItem> = emptyList()
     private var adapter: CookieAdapter? = null
+
+    var customCookieManager: CookieManager? = null
 
     private enum class Mode {
         LIST, HEADER, JSON, NETSCAPE, PYTHON, CURL
@@ -85,7 +88,8 @@ class CookieBottomSheetDialog : BottomSheetDialogFragment() {
             b.rvCookies.layoutManager = LinearLayoutManager(requireContext())
             b.rvCookies.adapter = newAdapter
 
-            // 提取或载入数据
+            // 提取或载入数据 (支持指定独立 Profile 的 CookieManager)
+            val cm = customCookieManager ?: CookieManager.getInstance()
             cookieList = if (!preloadedJson.isNullOrBlank()) {
                 val record = SavedCookieRecord(
                     id = "",
@@ -97,7 +101,7 @@ class CookieBottomSheetDialog : BottomSheetDialogFragment() {
                 )
                 record.getCookieList()
             } else {
-                CookieExtractor.extractCookies(targetUrl)
+                CookieExtractor.extractCookies(targetUrl, cm)
             }
 
             if (cookieList.isEmpty()) {
@@ -180,7 +184,7 @@ class CookieBottomSheetDialog : BottomSheetDialogFragment() {
 
     private fun shareViaSystem(host: String) {
         if (cookieList.isEmpty()) return
-        val (textToCopy, formatName) = getCurrentText(host)
+        val (textToCopy, _) = getCurrentText(host)
         try {
             val shareIntent = Intent(Intent.ACTION_SEND).apply {
                 type = "text/plain"

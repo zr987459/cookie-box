@@ -7,14 +7,16 @@ import com.cookiebox.app.model.CookieItem
 object CookieExtractor {
 
     /**
-     * 从系统 CookieManager 中提取目标 URL 及其根域名的全部 Cookie (含 HttpOnly)
+     * 从指定的 CookieManager (支持多 Profile 独立分身) 中提取目标 URL 及其根域名的全部 Cookie (含 HttpOnly)
      */
-    fun extractCookies(url: String): List<CookieItem> {
+    fun extractCookies(
+        url: String,
+        cookieManager: CookieManager = CookieManager.getInstance()
+    ): List<CookieItem> {
         if (url.isBlank() || !url.startsWith("http")) {
             return emptyList()
         }
 
-        val cookieManager = CookieManager.getInstance()
         val domain = try {
             Uri.parse(url).host ?: ""
         } catch (e: Exception) {
@@ -37,11 +39,13 @@ object CookieExtractor {
         }
 
         return cookieMap.map { (k, v) ->
+            val isSecure = k.startsWith("__Secure-") || k.startsWith("__Host-")
             CookieItem(
                 name = k,
                 value = v,
                 domain = domain,
-                path = "/"
+                path = "/",
+                isSecure = isSecure
             )
         }
     }

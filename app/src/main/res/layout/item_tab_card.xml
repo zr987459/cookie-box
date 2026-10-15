@@ -48,7 +48,7 @@
                     android:background="@drawable/bg_search_box"
                     android:paddingHorizontal="5dp"
                     android:paddingVertical="1dp"
-                    android:text="多开小号"
+                    android:text="多开分身"
                     android:textColor="@color/danger"
                     android:textSize="9sp"
                     android:textStyle="bold"
