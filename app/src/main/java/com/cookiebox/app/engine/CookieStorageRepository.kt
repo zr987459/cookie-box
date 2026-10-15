@@ -30,11 +30,24 @@ class CookieStorageRepository(context: Context) {
     }
 
     @Synchronized
+    fun getRecordsByDomain(domain: String): List<SavedCookieRecord> {
+        val root = DomainUtils.getRootDomain(domain)
+        return getAllRecords().filter {
+            it.domain.equals(domain, ignoreCase = true) ||
+            DomainUtils.getRootDomain(it.domain).equals(root, ignoreCase = true)
+        }
+    }
+
+    @Synchronized
     fun saveRecord(record: SavedCookieRecord) {
         val current = getAllRecords().toMutableList()
-        // 若存在同域名或同ID，先移除旧的
-        current.removeAll { it.id == record.id || (it.domain == record.domain && record.domain.isNotEmpty()) }
-        current.add(0, record)
+        // 允许同一网站保存多个账号！仅当 ID 相同时执行替换更新，否则直接新增
+        val existingIndex = current.indexOfFirst { it.id == record.id }
+        if (existingIndex >= 0) {
+            current[existingIndex] = record
+        } else {
+            current.add(0, record)
+        }
         persist(current)
     }
 

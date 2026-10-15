@@ -74,6 +74,11 @@ class StorageBottomSheetDialog : BottomSheetDialogFragment() {
             setupSearch()
             refreshData()
 
+            // 💡 新手教程与常见使用场景弹窗
+            b.btnCookieTutorial.setOnClickListener {
+                showTutorialDialog()
+            }
+
             b.btnClearStorage.setOnClickListener {
                 AlertDialog.Builder(requireContext())
                     .setTitle("清空储存库")
@@ -86,6 +91,30 @@ class StorageBottomSheetDialog : BottomSheetDialogFragment() {
                     .show()
             }
         }
+    }
+
+    private fun showTutorialDialog() {
+        val tutorial = """
+🍪 这些提取的 Cookie 具体怎么用？
+
+1. 🔑 免密直达与多账号切换：
+在储存库卡片点击「进入网站」，无需输入密码和扫码，0秒直接以该账号身份登录进入网站。支持同一网站保存大号、小号随时切换！
+
+2. 📥 下载神器画质解锁 (yt-dlp / Alist)：
+在详情中导出「Netscape txt」或「Header」，导入到 yt-dlp 等工具，即可解锁 4K、1080P60 甚至大会员画质下载。
+
+3. 🐍 Python 自动化与爬虫：
+在详情中切换到「Python 代码」，复制自动生成的 requests 请求代码，直接运行即可自动完成签到、发帖、数据抓取，免去折磨人的滑块和验证码！
+
+4. 💻 终端与接口调试 (cURL)：
+切换到「cURL 命令」，在终端里一键测试接口状态与抓取数据。
+        """.trimIndent()
+
+        AlertDialog.Builder(requireContext())
+            .setTitle("💡 Cookie 使用指南")
+            .setMessage(tutorial)
+            .setPositiveButton("我知道了", null)
+            .show()
     }
 
     private fun setupSearch() {
@@ -101,7 +130,7 @@ class StorageBottomSheetDialog : BottomSheetDialogFragment() {
     private fun refreshData() {
         val list = repo.getAllRecords()
         binding?.let { b ->
-            b.tvStorageSubtitle.text = "已持久保存 ${list.size} 个网站凭据"
+            b.tvStorageSubtitle.text = "已持久保存 ${list.size} 个网站账号凭据"
             if (list.isEmpty()) {
                 b.tvEmptyStorage.visibility = View.VISIBLE
                 b.rvStorageRecords.visibility = View.GONE

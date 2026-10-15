@@ -228,17 +228,40 @@ class CookieBottomSheetDialog : BottomSheetDialogFragment() {
     private fun saveToVault(host: String) {
         if (cookieList.isEmpty()) return
         val repo = CookieStorageRepository(requireContext())
-        val record = SavedCookieRecord(
-            id = UUID.randomUUID().toString(),
-            title = if (webTitle.isNotBlank()) webTitle else host,
-            domain = host,
-            url = targetUrl,
-            cookieJson = CookieFormatter.toJson(cookieList),
-            count = cookieList.size,
-            timestamp = System.currentTimeMillis()
-        )
-        repo.saveRecord(record)
-        Toast.makeText(requireContext(), R.string.saved_success, Toast.LENGTH_SHORT).show()
+        val existingDomainRecords = repo.getRecordsByDomain(host)
+
+        val defaultName = when {
+            webTitle.isNotBlank() && existingDomainRecords.isEmpty() -> webTitle
+            existingDomainRecords.isNotEmpty() -> "$host (账号 ${existingDomainRecords.size + 1})"
+            else -> "$host (主账号)"
+        }
+
+        val input = android.widget.EditText(requireContext()).apply {
+            setText(defaultName)
+            setSelection(defaultName.length)
+            setPadding(48, 32, 48, 16)
+        }
+
+        androidx.appcompat.app.AlertDialog.Builder(requireContext())
+            .setTitle("存入 Cookie 储存库")
+            .setMessage("为该账号设置一个备注名称（支持同一网站存多个不同账号）：")
+            .setView(input)
+            .setPositiveButton("确认保存") { _, _ ->
+                val finalTitle = input.text.toString().trim().ifBlank { defaultName }
+                val record = SavedCookieRecord(
+                    id = UUID.randomUUID().toString(),
+                    title = finalTitle,
+                    domain = host,
+                    url = targetUrl,
+                    cookieJson = CookieFormatter.toJson(cookieList),
+                    count = cookieList.size,
+                    timestamp = System.currentTimeMillis()
+                )
+                repo.saveRecord(record)
+                Toast.makeText(requireContext(), "✅ 已成功保存「$finalTitle」到储存库！", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("取消", null)
+            .show()
     }
 
     private fun setupSearch() {
