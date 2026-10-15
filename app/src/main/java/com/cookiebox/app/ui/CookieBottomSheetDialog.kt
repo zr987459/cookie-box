@@ -3,6 +3,7 @@ package com.cookiebox.app.ui
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.text.Editable
@@ -20,6 +21,7 @@ import com.cookiebox.app.engine.CookieStorageRepository
 import com.cookiebox.app.model.CookieItem
 import com.cookiebox.app.model.SavedCookieRecord
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
+import java.io.File
 import java.util.UUID
 
 class CookieBottomSheetDialog : BottomSheetDialogFragment() {
@@ -98,34 +100,48 @@ class CookieBottomSheetDialog : BottomSheetDialogFragment() {
                 CookieExtractor.extractCookies(targetUrl)
             }
 
-            b.chipCount.text = "${cookieList.size} 项"
-
             if (cookieList.isEmpty()) {
                 b.tvEmptyHint.visibility = View.VISIBLE
                 b.rvCookies.visibility = View.GONE
-                b.scrollCodeView.visibility = View.GONE
+                b.layoutCodeContainer.visibility = View.GONE
                 b.btnCopyAll.isEnabled = false
                 b.btnSaveStorage.isEnabled = false
                 b.btnTopQuickCopy.isEnabled = false
+                b.btnShareCookie.isEnabled = false
+                b.btnSaveAsFile.isEnabled = false
             } else {
                 b.tvEmptyHint.visibility = View.GONE
                 newAdapter.setData(cookieList)
                 b.btnCopyAll.isEnabled = true
                 b.btnSaveStorage.isEnabled = true
                 b.btnTopQuickCopy.isEnabled = true
+                b.btnShareCookie.isEnabled = true
+                b.btnSaveAsFile.isEnabled = true
             }
 
             setupFormatChips(host)
             setupSearch()
 
-            // 顶部快捷一键复制全部 Header
+            // 1. 顶部显眼一键复制
             b.btnTopQuickCopy.setOnClickListener {
-                val header = CookieFormatter.toHeaderString(cookieList)
-                copyToClipboard(header, "Cookie Header")
-                Toast.makeText(requireContext(), "已复制全部 ${cookieList.size} 项 Cookie Header 字符串！", Toast.LENGTH_SHORT).show()
+                copyCurrentFormat(host)
             }
 
-            // 底部主操作按钮复制当前格式
+            // 2. 导出为 TXT 本地文件 (免剪贴板限制)
+            b.btnSaveAsFile.setOnClickListener {
+                exportToLocalFile(host)
+            }
+
+            // 3. 系统原生分享发送到便签/微信 (100% 绕过悬浮窗剪贴板限制)
+            b.btnShareCookie.setOnClickListener {
+                shareViaSystem(host)
+            }
+
+            // 4. 点击代码展示框直接秒级复制
+            b.scrollCodeView.setOnClickListener { copyCurrentFormat(host) }
+            b.tvCodeContent.setOnClickListener { copyCurrentFormat(host) }
+
+            // 5. 底部主复制按钮
             b.btnCopyAll.setOnClickListener {
                 copyCurrentFormat(host)
             }
@@ -133,6 +149,75 @@ class CookieBottomSheetDialog : BottomSheetDialogFragment() {
             b.btnSaveStorage.setOnClickListener {
                 saveToVault(host)
             }
+        }
+    }
+
+    private fun getCurrentText(host: String): Pair<String, String> {
+        return when (currentMode) {
+            Mode.LIST, Mode.HEADER -> Pair(CookieFormatter.toHeaderString(cookieList), "Header 键值对")
+            Mode.JSON -> Pair(CookieFormatter.toJson(cookieList), "JSON 格式")
+            Mode.NETSCAPE -> Pair(CookieFormatter.toNetscape(cookieList, host), "Netscape txt")
+            Mode.PYTHON -> Pair(CookieFormatter.toPythonSnippet(cookieList, targetUrl, currentUserAgent), "Python 脚本")
+            Mode.CURL -> Pair(CookieFormatter.toCurlCommand(cookieList, targetUrl, currentUserAgent), "cURL 命令")
+        }
+    }
+
+    private fun copyCurrentFormat(host: String) {
+        if (cookieList.isEmpty()) {
+            Toast.makeText(requireContext(), "当前没有可提取的 Cookie", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val (textToCopy, formatName) = getCurrentText(host)
+        val success = copyToClipboard(textToCopy, "CookieBox_$formatName")
+        if (success) {
+            Toast.makeText(requireContext(), "✅ 已成功复制全部 ${cookieList.size} 个 Cookie ($formatName)！", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(requireContext(), "剪贴板被系统限制，正在为您调起系统分享...", Toast.LENGTH_SHORT).show()
+            shareViaSystem(host)
+        }
+    }
+
+    private fun shareViaSystem(host: String) {
+        if (cookieList.isEmpty()) return
+        val (textToCopy, formatName) = getCurrentText(host)
+        try {
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_SUBJECT, "$host Cookie 凭据")
+                putExtra(Intent.EXTRA_TEXT, textToCopy)
+            }
+            startActivity(Intent.createChooser(shareIntent, "发送/复制 Cookie 到便签或其他应用"))
+        } catch (e: Exception) {
+            Toast.makeText(requireContext(), "调起分享失败: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun exportToLocalFile(host: String) {
+        if (cookieList.isEmpty()) return
+        val (textToCopy, _) = getCurrentText(host)
+        try {
+            val cleanHost = host.replace("[^a-zA-Z0-9.-]".toRegex(), "_")
+            val fileName = "CookieBox_${cleanHost}.txt"
+            val downloadDir = File("/storage/emulated/0/Download")
+            if (!downloadDir.exists()) downloadDir.mkdirs()
+            val file = File(downloadDir, fileName)
+            file.writeText(textToCopy)
+            Toast.makeText(requireContext(), "📁 已成功导出到手机下载目录: $fileName", Toast.LENGTH_LONG).show()
+        } catch (e: Exception) {
+            Toast.makeText(requireContext(), "保存文件失败: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun copyToClipboard(text: String, label: String): Boolean {
+        return try {
+            val clipboard = requireActivity().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            val clip = ClipData.newPlainText(label, text)
+            clipboard.setPrimaryClip(clip)
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
         }
     }
 
@@ -172,7 +257,7 @@ class CookieBottomSheetDialog : BottomSheetDialogFragment() {
                     currentMode = Mode.LIST
                     b.rvCookies.visibility = View.VISIBLE
                     b.layoutSearch.visibility = View.VISIBLE
-                    b.scrollCodeView.visibility = View.GONE
+                    b.layoutCodeContainer.visibility = View.GONE
                     b.btnCopyAll.text = "一键复制全部 Cookie (Header)"
                 }
                 R.id.chipFormatHeader -> {
@@ -183,7 +268,7 @@ class CookieBottomSheetDialog : BottomSheetDialogFragment() {
                 R.id.chipFormatJson -> {
                     currentMode = Mode.JSON
                     showTextView(CookieFormatter.toJson(cookieList))
-                    b.btnCopyAll.text = "复制结构化 JSON"
+                    b.btnCopyAll.text = "复制全部结构化 JSON"
                 }
                 R.id.chipFormatNetscape -> {
                     currentMode = Mode.NETSCAPE
@@ -208,33 +293,9 @@ class CookieBottomSheetDialog : BottomSheetDialogFragment() {
         binding?.let { b ->
             b.rvCookies.visibility = View.GONE
             b.layoutSearch.visibility = View.GONE
-            b.scrollCodeView.visibility = View.VISIBLE
+            b.layoutCodeContainer.visibility = View.VISIBLE
             b.tvCodeContent.text = content
         }
-    }
-
-    private fun copyCurrentFormat(host: String) {
-        if (cookieList.isEmpty()) {
-            Toast.makeText(requireContext(), "当前没有可提取的 Cookie", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        val (textToCopy, formatName) = when (currentMode) {
-            Mode.LIST, Mode.HEADER -> Pair(CookieFormatter.toHeaderString(cookieList), "Header 键值对")
-            Mode.JSON -> Pair(CookieFormatter.toJson(cookieList), "JSON 格式")
-            Mode.NETSCAPE -> Pair(CookieFormatter.toNetscape(cookieList, host), "Netscape txt")
-            Mode.PYTHON -> Pair(CookieFormatter.toPythonSnippet(cookieList, targetUrl, currentUserAgent), "Python 脚本")
-            Mode.CURL -> Pair(CookieFormatter.toCurlCommand(cookieList, targetUrl, currentUserAgent), "cURL 命令")
-        }
-
-        copyToClipboard(textToCopy, "Cookie 数据")
-        Toast.makeText(requireContext(), "已复制全部 ${cookieList.size} 个 Cookie ($formatName) 到剪贴板！", Toast.LENGTH_SHORT).show()
-    }
-
-    private fun copyToClipboard(text: String, label: String) {
-        val clipboard = requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        val clip = ClipData.newPlainText(label, text)
-        clipboard.setPrimaryClip(clip)
     }
 
     override fun onDestroyView() {
