@@ -195,6 +195,7 @@ class MainActivity : AppCompatActivity() {
                         updateSecurityIcon(it)
                     }
                 }
+                unlockViewportScaling(view)
             }
         }
 
@@ -447,6 +448,20 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        // 顶部一键即时翻译为中文
+        binding.btnTranslate.setOnClickListener {
+            val wv = getActiveTab()?.webView
+            if (wv != null && wv.url != null) {
+                com.cookiebox.app.engine.WebTranslator.translateInPage(wv, "zh-CN")
+                Toast.makeText(this, "正在将当前网页翻译为中文...", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        // 顶部页面缩放与工具箱
+        binding.btnMoreTools.setOnClickListener {
+            openToolsDialog()
+        }
+
         // 刷新
         binding.btnRefresh.setOnClickListener {
             getActiveTab()?.webView?.reload()
@@ -528,6 +543,52 @@ class MainActivity : AppCompatActivity() {
             detailDialog.show(supportFragmentManager, "CookieDetailSheet")
         }
         dialog.show(supportFragmentManager, "StorageBottomSheet")
+    }
+
+    private fun unlockViewportScaling(webView: WebView?) {
+        val js = """
+            (function() {
+                var meta = document.querySelector('meta[name="viewport"]');
+                if (meta) {
+                    var c = meta.getAttribute('content') || '';
+                    c = c.replace(/user-scalable\s*=\s*no/gi, 'user-scalable=yes')
+                         .replace(/maximum-scale\s*=\s*1(\.0)?/gi, 'maximum-scale=5.0');
+                    if (!c.includes('user-scalable')) {
+                        c += ', user-scalable=yes, maximum-scale=5.0';
+                    }
+                    meta.setAttribute('content', c);
+                }
+            })();
+        """.trimIndent()
+        webView?.evaluateJavascript(js, null)
+    }
+
+    private fun openToolsDialog() {
+        val tab = getActiveTab() ?: return
+        val wv = tab.webView ?: return
+        val currentTextZoom = wv.settings.textZoom
+
+        val dialog = com.cookiebox.app.ui.WebToolsBottomSheetDialog.newInstance(currentTextZoom)
+        dialog.onZoomChanged = { zoom ->
+            wv.settings.textZoom = zoom
+        }
+        dialog.onTranslateInPage = {
+            com.cookiebox.app.engine.WebTranslator.translateInPage(wv, "zh-CN")
+            Toast.makeText(this, "正在网页内即时翻译为中文...", Toast.LENGTH_SHORT).show()
+        }
+        dialog.onTranslateProxy = {
+            val currentUrl = wv.url ?: tab.url
+            if (currentUrl.isNotBlank()) {
+                val proxyUrl = com.cookiebox.app.engine.WebTranslator.getTranslateProxyUrl(currentUrl, "zh-CN")
+                loadUrlInTab(tab, proxyUrl)
+                Toast.makeText(this, "正在通过翻译阅读器载入...", Toast.LENGTH_SHORT).show()
+            }
+        }
+        dialog.onRestoreTranslate = {
+            wv.reload()
+            Toast.makeText(this, "已重新加载并还原原网页", Toast.LENGTH_SHORT).show()
+        }
+        dialog.show(supportFragmentManager, "WebToolsBottomSheet")
     }
 
     private fun openCookieSheet() {

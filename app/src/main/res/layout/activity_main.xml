@@ -64,10 +64,30 @@
             </LinearLayout>
 
             <ImageButton
+                android:id="@+id/btnTranslate"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
+                android:layout_marginStart="4dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="网页翻译"
+                android:padding="8dp"
+                android:src="@drawable/ic_translate" />
+
+            <ImageButton
+                android:id="@+id/btnMoreTools"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
+                android:layout_marginStart="2dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="缩放与工具"
+                android:padding="8dp"
+                android:src="@drawable/ic_zoom_in" />
+
+            <ImageButton
                 android:id="@+id/btnSwitchUa"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:layout_marginStart="6dp"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
+                android:layout_marginStart="2dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="切换UA"
                 android:padding="8dp"
@@ -75,8 +95,9 @@
 
             <ImageButton
                 android:id="@+id/btnClear"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
+                android:layout_marginStart="2dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="清理Cookie"
                 android:padding="8dp"
