@@ -10,15 +10,15 @@
 | ID | 任务 | 范围（只能改这些） | 验收 | 依赖 | 状态 |
 |---|---|---|---|---|---|
 | T-001 | 把 integrate/1.7 上的加固提交 7288fb1 合入 main（两边已分叉，用 merge commit），并完成一次编译与覆盖安装验证 | 合并操作；不改代码 | `assembleDebug` 通过；main 同时包含 7288fb1 与 09f6d04；从 1.6.12 与 1.7.0(c7bcce2) 覆盖安装后储存库记录数不变 | 需主人批准（CI 手动运行会发预发布版） | 完成 |
-| T-002 | AccountVault 密钥获取改为「别名存在就不重建」，与 SecureStore 同规则（可直接复用 SecureStore，别名 `cookiebox_account_key` 不变） | `engine/AccountVault.kt` | 别名存在但取不出时返回失败而不是生成新密钥；1.7.0 覆盖安装后已存账号可解密 | — | 完成 |
+| T-002 | AccountVault 密钥获取改为「别名存在就不重建」，与 SecureStore 同规则（可直接复用 SecureStore，别名 `cookiebox_account_key` 不变） | `engine/AccountVault.kt` | 别名存在但取不出时返回失败而不是生成新密钥；1.7.0 覆盖安装后已存账号可解密 | — | 待审(R-001 代码通过；需拆出独立分支后合入) |
 | T-003 | 签名密钥泄露处置方案（决策文档，不改代码） | `docs/adr/0002-signing-key.md` | 列出选项与对已安装用户的影响：A 维持现状并记录风险；B 新密钥 + APK v3 签名轮换（Android 9+ 可平滑升级，7–8 需重装）；C 新密钥，全员重装（会丢本地数据，不推荐）。是否清理 git 历史（需 force push）由主人决定 | — | 阻塞(待主人决策) |
 | T-004 | CI 拆分：`integrate/**`、`task/**` 推送只编译不发布；发布仅 main / tag；加入 gitleaks 密钥扫描步骤 | `.github/workflows/` | 推任务分支只出 Artifact 不出 Release；扫描能跑通（已知的 jks/口令先加入白名单并注明 T-003） | — | 待办 |
 | T-005a | 存储层可测性：为 SecureStore 抽出接口（如 `CryptoBox`），CookieStorageRepository 改为构造注入，默认实现不变 | `engine/SecureStore.kt`、`engine/CookieStorageRepository.kt` | 公开 API 与落盘格式零变化；调用方无需改动 | T-001 | 待办 |
 | T-005b | 迁移矩阵单元测试（Robolectric + 假 CryptoBox） | `app/src/test/**`、`app/build.gradle.kts`（仅 testImplementation） | 覆盖：仅明文 / 仅密文 / 两者并存 / 密文解不开 / 连续两次解不开 / 恢复合并 / 损坏 JSON / 加密不可用降级；全部断言「记录不少于迁移前」 | T-005a | 待办 |
 | T-006 | 日志脱敏审计：全仓 `printStackTrace` / `Log` 检查，确保不输出 Cookie 值、密码；release 构建关闭调试日志 | 涉及文件逐一列在 HANDOFF | grep 结果附在 HANDOFF；无敏感值输出 | — | 待办 |
-| T-007 | 剪贴板敏感标记：复制凭据时设置 `ClipDescription.EXTRA_IS_SENSITIVE`（Android 13+） | `MainActivity.kt`(copyText)、`ui/CookieBottomSheetDialog.kt`、`ui/StorageBottomSheetDialog.kt`、`ui/AccountsBottomSheetDialog.kt` 中的复制点 | 13+ 系统剪贴板预览不显示明文；低版本行为不变 | — | 完成 |
+| T-007 | 剪贴板敏感标记：复制凭据时设置 `ClipDescription.EXTRA_IS_SENSITIVE`（Android 13+） | `MainActivity.kt`(copyText)、`ui/CookieBottomSheetDialog.kt`、`ui/StorageBottomSheetDialog.kt`、`ui/AccountsBottomSheetDialog.kt` 中的复制点 | 13+ 系统剪贴板预览不显示明文；低版本行为不变 | — | 进行中(R-001 打回：缺 import 编译失败) |
 | T-008 | 标签会话持久化评估：`browser_prefs` 里保存的 URL 可能带 token 参数，给出方案（加密或剥离敏感 query）并实现 | `engine/BrowserPrefs.kt` | 旧会话数据仍能恢复；新保存的数据不含明文 token 参数或已加密 | T-005a（如复用 CryptoBox） | 待办 |
-| T-015 | 收紧下载 JS 桥：`CookieBoxDl` 从全局 `addJavascriptInterface` 改为 `addWebMessageListener`（仅主框架、仅当前页 origin），或仅在 blob 下载期间注册、完成即移除 | `MainActivity.kt`（BlobBridge / downloadBlob 相关段） | 普通网页 `window.CookieBoxDl` 不存在；blob / data 下载行为不变；一次性 token 校验保留 | — | 完成 |
+| T-015 | 收紧下载 JS 桥：`CookieBoxDl` 从全局 `addJavascriptInterface` 改为 `addWebMessageListener`（仅主框架、仅当前页 origin），或仅在 blob 下载期间注册、完成即移除 | `MainActivity.kt`（BlobBridge / downloadBlob 相关段） | 普通网页 `window.CookieBoxDl` 不存在；blob / data 下载行为不变；一次性 token 校验保留 | — | 进行中(R-001 打回：桥不生效且外泄到下一页) |
 | T-016 | 统一敏感页注入策略：`isSensitiveLoginPage` 由写死 hark.com 改为可配置规则（域名列表 + 页面含密码框时只允许自动填充脚本），视口 / 缩放 / 翻译 / 下载注入统一走它 | `MainActivity.kt`（isSensitiveLoginPage 及各注入调用点）、可新增 `engine/ScriptPolicy.kt` | 规则可单测；hark.com 现有行为不变；登录页不再被视口 / 缩放脚本改写 | 建议在 T-009a 之后 | 待办 |
 
 ## P1 — 可维护性
