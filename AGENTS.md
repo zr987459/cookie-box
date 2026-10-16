@@ -22,6 +22,8 @@
 - **禁止 force push、禁止改写历史、禁止删分支**，除非仓库主人在本次指令里明确批准。
 - 提交信息：Conventional Commits（`feat|fix|docs|refactor|test|ci|chore(scope): 摘要`），正文写「为什么」和「兼容性影响」，末行写 `Task: T-xxx`。
 - 推送前先拉取分支最新 head；有人刚提交就先读他的 HANDOFF 再动手。
+- **仅通过 GitHub API 提交的一棒**（无本地 Git / 无编译环境）：每次提交的 parent 必须等于开工时读到的分支 head，更新 ref 时 `force=false`；HANDOFF 的「兼容性验证」必须如实写「未编译、未真机验证」，不得写「通过」。
+- 集成分支与 main 分叉时（例如 main 有纯文档提交、integrate 有代码提交），合并用 merge commit，不用 rebase（rebase 会改写他人已推送的 sha）。
 
 ## 3. 数据兼容红线（不破坏已有数据）
 
@@ -57,6 +59,10 @@
 - 应用不得新增任何联网上报、统计 SDK、远程配置；除 WebView 访问用户输入的网址外不发任何请求。
 - 本地数据保持 `allowBackup=false` 与 data_extraction_rules 全排除，不得放开。
 - 复制到剪贴板的凭据应标记为敏感（T-007）。
+- **网页注入与 JS 桥红线**：
+  - 不得新增全局 `addJavascriptInterface`；新桥一律用 `WebViewCompat.addWebMessageListener` 并限定 origin，或只在单次操作期间存在（现存 `CookieBoxDl` 见 T-015）。
+  - 所有 `evaluateJavascript` 注入（视口、缩放、翻译、自动填充、下载）必须经过同一个敏感页判定，不得各自绕过；判定规则统一后见 T-016。
+  - 注入脚本只读或只改展示，不得把页面数据（Cookie、表单值、Storage）回传给除本机 UI 以外的任何地方。
 - 已知遗留风险：`cookiebox.jks` 与签名口令目前公开在仓库里（见 T-003）。在主人决定前不得再扩散（不得复制到别处、不得写进文档示例）。
 
 ## 5. 保持项目干净
