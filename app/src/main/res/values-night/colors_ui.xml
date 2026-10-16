@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 深色模式：Slate 极简黑。底色 #0F172A，浮层 #151E31，发丝边 #243045 -->
+<resources>
+    <color name="cb_floating_surface">#151E31</color>
+    <color name="cb_hairline">#243045</color>
+    <color name="cb_lock_chip">#1E293B</color>
+    <color name="cb_icon">#CBD5E1</color>
+    <color name="cb_shadow">#99000000</color>
+    <color name="cb_ripple_on_primary">#33000000</color>
+</resources>

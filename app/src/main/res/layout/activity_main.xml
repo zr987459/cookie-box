@@ -1,4 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    CookieBox · activity_main.xml（T-019 UI 重构）
+    设计：浮动药丸地址栏 + 悬浮胶囊控制底栏 + Slate 深色质感（#0F172A）
+    兼容：保留全部 ViewBinding id（MainActivity.kt 无需改动即可编译运行）
+      ivSecurity / etUrl / btnClearUrl / btnRefresh / btnMenu / progressBar
+      layoutFindBar / etFind / tvFindCount / btnFindPrev / btnFindNext / btnFindClose
+      layoutWebContainer / layoutShortcuts / chipGroupShortcuts
+      bottomAppBar / btnNavBack / btnNavForward / btnNavHome / btnNavTabs / tvTabBadge
+      btnNavStorage / btnNavExtract / layoutFullscreen
+    类型变化（均为原类型的子类或仅用到 View 通用 API）：
+      progressBar  ProgressBar  → LinearProgressIndicator（继承 ProgressBar）
+      layoutFindBar LinearLayout → MaterialCardView（仅用 visibility）
+      bottomAppBar  LinearLayout → MaterialCardView（仅作 Snackbar anchor）
+-->
 <androidx.coordinatorlayout.widget.CoordinatorLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
@@ -6,170 +20,222 @@
     android:layout_height="match_parent"
     android:background="@color/background">
 
-    <!-- 顶部极简地址栏 -->
+    <!-- ========== 顶部：透明 AppBar 承载浮动药丸 ========== -->
     <com.google.android.material.appbar.AppBarLayout
         android:id="@+id/appBarLayout"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="@color/surface"
-        app:elevation="1dp">
+        android:background="@android:color/transparent"
+        android:stateListAnimator="@null"
+        app:elevation="0dp">
 
-        <LinearLayout
+        <!-- 智能浮动药丸地址栏 -->
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/cardAddressBar"
             android:layout_width="match_parent"
-            android:layout_height="56dp"
-            android:gravity="center_vertical"
-            android:orientation="horizontal"
-            android:paddingStart="10dp"
-            android:paddingEnd="4dp">
+            android:layout_height="48dp"
+            android:layout_marginStart="12dp"
+            android:layout_marginTop="8dp"
+            android:layout_marginEnd="12dp"
+            android:layout_marginBottom="6dp"
+            android:outlineAmbientShadowColor="@color/cb_shadow"
+            android:outlineSpotShadowColor="@color/cb_shadow"
+            app:cardBackgroundColor="@color/cb_floating_surface"
+            app:cardCornerRadius="24dp"
+            app:cardElevation="3dp"
+            app:cardPreventCornerOverlap="false"
+            app:strokeColor="@color/cb_hairline"
+            app:strokeWidth="1dp"
+            tools:targetApi="p">
 
-            <!-- 地址栏：安全标识 + 输入 + 清空/刷新 -->
+            <FrameLayout
+                android:layout_width="match_parent"
+                android:layout_height="match_parent">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:paddingStart="8dp"
+                    android:paddingEnd="2dp">
+
+                    <!-- SSL 安全挂锁：圆形底座，颜色由代码按 https / 搜索 / http 切换 -->
+                    <FrameLayout
+                        android:layout_width="30dp"
+                        android:layout_height="30dp"
+                        android:background="@drawable/bg_lock_chip">
+
+                        <ImageView
+                            android:id="@+id/ivSecurity"
+                            android:layout_width="15dp"
+                            android:layout_height="15dp"
+                            android:layout_gravity="center"
+                            android:contentDescription="安全状态"
+                            android:src="@drawable/ic_lock" />
+                    </FrameLayout>
+
+                    <!-- 域名排版：中粗无衬线、轻微字距，单行 -->
+                    <EditText
+                        android:id="@+id/etUrl"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_marginStart="10dp"
+                        android:layout_weight="1"
+                        android:background="@null"
+                        android:fontFamily="sans-serif-medium"
+                        android:hint="@string/search_or_enter_url"
+                        android:imeOptions="actionGo|flagNoExtractUi"
+                        android:importantForAutofill="no"
+                        android:inputType="textUri"
+                        android:letterSpacing="0.01"
+                        android:maxLines="1"
+                        android:selectAllOnFocus="true"
+                        android:singleLine="true"
+                        android:textColor="@color/on_surface"
+                        android:textColorHint="@color/on_surface_variant"
+                        android:textCursorDrawable="@null"
+                        android:textSize="15sp" />
+
+                    <ImageButton
+                        android:id="@+id/btnClearUrl"
+                        android:layout_width="36dp"
+                        android:layout_height="36dp"
+                        android:background="?attr/selectableItemBackgroundBorderless"
+                        android:contentDescription="清空"
+                        android:padding="10dp"
+                        android:scaleType="fitCenter"
+                        android:src="@drawable/ic_close"
+                        android:visibility="gone"
+                        app:tint="@color/cb_icon" />
+
+                    <ImageButton
+                        android:id="@+id/btnRefresh"
+                        android:layout_width="38dp"
+                        android:layout_height="38dp"
+                        android:background="?attr/selectableItemBackgroundBorderless"
+                        android:contentDescription="刷新"
+                        android:padding="10dp"
+                        android:scaleType="fitCenter"
+                        android:src="@drawable/ic_refresh"
+                        app:tint="@color/cb_icon" />
+
+                    <!-- 更多菜单收进药丸内：翻译 / 缩放 / 桌面版 / 查找 / 分享 / 清除 -->
+                    <ImageButton
+                        android:id="@+id/btnMenu"
+                        android:layout_width="38dp"
+                        android:layout_height="38dp"
+                        android:background="?attr/selectableItemBackgroundBorderless"
+                        android:contentDescription="更多"
+                        android:padding="10dp"
+                        android:scaleType="fitCenter"
+                        android:src="@drawable/ic_more_vert"
+                        app:tint="@color/cb_icon" />
+                </LinearLayout>
+
+                <!-- 加载进度：贴药丸底边的 2dp 细线，被圆角自然裁切 -->
+                <com.google.android.material.progressindicator.LinearProgressIndicator
+                    android:id="@+id/progressBar"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="bottom"
+                    android:max="100"
+                    android:visibility="gone"
+                    app:indicatorColor="@color/primary"
+                    app:trackColor="@android:color/transparent"
+                    app:trackCornerRadius="1dp"
+                    app:trackThickness="2dp" />
+            </FrameLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- 页内查找：同款药丸，从地址栏下方展开 -->
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/layoutFindBar"
+            android:layout_width="match_parent"
+            android:layout_height="44dp"
+            android:layout_marginStart="12dp"
+            android:layout_marginEnd="12dp"
+            android:layout_marginBottom="6dp"
+            android:visibility="gone"
+            app:cardBackgroundColor="@color/cb_floating_surface"
+            app:cardCornerRadius="22dp"
+            app:cardElevation="0dp"
+            app:strokeColor="@color/cb_hairline"
+            app:strokeWidth="1dp">
+
             <LinearLayout
-                android:layout_width="0dp"
-                android:layout_height="42dp"
-                android:layout_weight="1"
-                android:background="@drawable/bg_search_box"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
                 android:gravity="center_vertical"
                 android:orientation="horizontal"
-                android:paddingStart="12dp"
-                android:paddingEnd="4dp">
-
-                <ImageView
-                    android:id="@+id/ivSecurity"
-                    android:layout_width="16dp"
-                    android:layout_height="16dp"
-                    android:contentDescription="安全状态"
-                    android:src="@drawable/ic_lock" />
+                android:paddingStart="14dp"
+                android:paddingEnd="2dp">
 
                 <EditText
-                    android:id="@+id/etUrl"
+                    android:id="@+id/etFind"
                     android:layout_width="0dp"
                     android:layout_height="match_parent"
-                    android:layout_marginStart="8dp"
                     android:layout_weight="1"
                     android:background="@null"
-                    android:hint="@string/search_or_enter_url"
-                    android:imeOptions="actionGo|flagNoExtractUi"
+                    android:hint="在页面中查找"
+                    android:imeOptions="actionSearch|flagNoExtractUi"
                     android:importantForAutofill="no"
-                    android:inputType="textUri"
-                    android:maxLines="1"
-                    android:selectAllOnFocus="true"
+                    android:inputType="text"
                     android:singleLine="true"
                     android:textColor="@color/on_surface"
                     android:textColorHint="@color/on_surface_variant"
                     android:textSize="14sp" />
 
-                <ImageButton
-                    android:id="@+id/btnClearUrl"
-                    android:layout_width="36dp"
-                    android:layout_height="36dp"
-                    android:background="?attr/selectableItemBackgroundBorderless"
-                    android:contentDescription="清空"
-                    android:padding="9dp"
-                    android:src="@drawable/ic_close"
-                    android:visibility="gone" />
+                <TextView
+                    android:id="@+id/tvFindCount"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginHorizontal="6dp"
+                    android:fontFamily="monospace"
+                    android:gravity="center"
+                    android:minWidth="36dp"
+                    android:text="0/0"
+                    android:textColor="@color/on_surface_variant"
+                    android:textSize="12sp" />
 
                 <ImageButton
-                    android:id="@+id/btnRefresh"
+                    android:id="@+id/btnFindPrev"
                     android:layout_width="36dp"
                     android:layout_height="36dp"
                     android:background="?attr/selectableItemBackgroundBorderless"
-                    android:contentDescription="刷新"
+                    android:contentDescription="上一个"
                     android:padding="8dp"
-                    android:src="@drawable/ic_refresh" />
+                    android:src="@drawable/ic_keyboard_arrow_up"
+                    app:tint="@color/cb_icon" />
+
+                <ImageButton
+                    android:id="@+id/btnFindNext"
+                    android:layout_width="36dp"
+                    android:layout_height="36dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="下一个"
+                    android:padding="8dp"
+                    android:src="@drawable/ic_keyboard_arrow_down"
+                    app:tint="@color/cb_icon" />
+
+                <ImageButton
+                    android:id="@+id/btnFindClose"
+                    android:layout_width="36dp"
+                    android:layout_height="36dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="关闭查找"
+                    android:padding="10dp"
+                    android:src="@drawable/ic_close"
+                    app:tint="@color/cb_icon" />
             </LinearLayout>
-
-            <!-- 更多菜单：翻译 / 缩放 / 桌面版 / 查找 / 分享 / 清除等 -->
-            <ImageButton
-                android:id="@+id/btnMenu"
-                android:layout_width="44dp"
-                android:layout_height="44dp"
-                android:layout_marginStart="2dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="更多"
-                android:padding="10dp"
-                android:src="@drawable/ic_more_vert" />
-        </LinearLayout>
-
-        <!-- 页内查找栏 -->
-        <LinearLayout
-            android:id="@+id/layoutFindBar"
-            android:layout_width="match_parent"
-            android:layout_height="48dp"
-            android:gravity="center_vertical"
-            android:orientation="horizontal"
-            android:paddingHorizontal="10dp"
-            android:visibility="gone">
-
-            <EditText
-                android:id="@+id/etFind"
-                android:layout_width="0dp"
-                android:layout_height="38dp"
-                android:layout_weight="1"
-                android:background="@drawable/bg_search_box"
-                android:hint="在页面中查找"
-                android:imeOptions="actionSearch|flagNoExtractUi"
-                android:importantForAutofill="no"
-                android:inputType="text"
-                android:paddingHorizontal="12dp"
-                android:singleLine="true"
-                android:textColor="@color/on_surface"
-                android:textColorHint="@color/on_surface_variant"
-                android:textSize="14sp" />
-
-            <TextView
-                android:id="@+id/tvFindCount"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginHorizontal="8dp"
-                android:minWidth="36dp"
-                android:gravity="center"
-                android:text="0/0"
-                android:textColor="@color/on_surface_variant"
-                android:textSize="12sp" />
-
-            <ImageButton
-                android:id="@+id/btnFindPrev"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="上一个"
-                android:padding="8dp"
-                android:src="@drawable/ic_keyboard_arrow_up" />
-
-            <ImageButton
-                android:id="@+id/btnFindNext"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="下一个"
-                android:padding="8dp"
-                android:src="@drawable/ic_keyboard_arrow_down" />
-
-            <ImageButton
-                android:id="@+id/btnFindClose"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="关闭查找"
-                android:padding="9dp"
-                android:src="@drawable/ic_close" />
-        </LinearLayout>
-
-        <ProgressBar
-            android:id="@+id/progressBar"
-            style="?android:attr/progressBarStyleHorizontal"
-            android:layout_width="match_parent"
-            android:layout_height="3dp"
-            android:max="100"
-            android:progressTint="@color/primary"
-            android:visibility="gone" />
+        </com.google.android.material.card.MaterialCardView>
     </com.google.android.material.appbar.AppBarLayout>
 
-    <!-- 中间主体浏览器视窗 -->
+    <!-- ========== 中部：浏览视窗（底部让出悬浮底栏区域，不遮挡网页内容） ========== -->
     <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:layout_marginBottom="56dp"
+        android:layout_marginBottom="@dimen/cb_dock_clearance"
         app:layout_behavior="@string/appbar_scrolling_view_behavior">
 
         <!-- 多标签 WebView 动态容器 -->
@@ -178,14 +244,19 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent" />
 
-        <!-- 首页快捷导航卡片 (未载入页面时展示) -->
+        <!-- 首页（未载入页面时展示） -->
         <ScrollView
             android:id="@+id/layoutShortcuts"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:background="@color/background"
+            android:clipToPadding="false"
             android:fillViewport="true"
-            android:padding="20dp"
+            android:paddingStart="20dp"
+            android:paddingTop="12dp"
+            android:paddingEnd="20dp"
+            android:paddingBottom="20dp"
+            android:scrollbars="none"
             android:visibility="visible">
 
             <LinearLayout
@@ -194,76 +265,115 @@
                 android:gravity="center_horizontal"
                 android:orientation="vertical">
 
-                <ImageView
-                    android:layout_width="60dp"
-                    android:layout_height="60dp"
-                    android:layout_marginTop="24dp"
-                    android:src="@drawable/ic_cookie" />
+                <!-- 品牌徽标：描边圆角方块 -->
+                <com.google.android.material.card.MaterialCardView
+                    android:layout_width="68dp"
+                    android:layout_height="68dp"
+                    android:layout_marginTop="36dp"
+                    app:cardBackgroundColor="@color/cb_floating_surface"
+                    app:cardCornerRadius="22dp"
+                    app:cardElevation="0dp"
+                    app:strokeColor="@color/cb_hairline"
+                    app:strokeWidth="1dp">
+
+                    <ImageView
+                        android:layout_width="34dp"
+                        android:layout_height="34dp"
+                        android:layout_gravity="center"
+                        android:importantForAccessibility="no"
+                        android:src="@drawable/ic_cookie" />
+                </com.google.android.material.card.MaterialCardView>
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
+                    android:layout_marginTop="16dp"
+                    android:fontFamily="sans-serif-medium"
+                    android:letterSpacing="-0.01"
                     android:text="CookieBox"
-                    android:textColor="@color/primary"
-                    android:textSize="22sp"
-                    android:textStyle="bold" />
+                    android:textColor="@color/on_surface"
+                    android:textSize="26sp" />
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
+                    android:layout_marginTop="6dp"
                     android:text="轻量 · 安全 · 穿透提取 · 多窗口与凭据库"
                     android:textColor="@color/on_surface_variant"
                     android:textSize="12sp" />
 
-                <TextView
+                <!-- 快捷入口 -->
+                <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="28dp"
-                    android:text="快捷入口（长按可删除，菜单里可添加当前网页）"
-                    android:textColor="@color/primary"
-                    android:textSize="14sp"
-                    android:textStyle="bold" />
+                    android:layout_marginTop="36dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
 
-                <!-- 快捷按钮网格 -->
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:fontFamily="sans-serif-medium"
+                        android:text="快捷入口"
+                        android:textColor="@color/on_surface"
+                        android:textSize="14sp" />
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="8dp"
+                        android:layout_weight="1"
+                        android:ellipsize="end"
+                        android:singleLine="true"
+                        android:text="长按删除 · 菜单可添加当前网页"
+                        android:textColor="@color/on_surface_variant"
+                        android:textSize="11sp" />
+                </LinearLayout>
+
                 <com.google.android.material.chip.ChipGroup
                     android:id="@+id/chipGroupShortcuts"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp">
+                    android:layout_marginTop="12dp"
+                    app:chipSpacingHorizontal="8dp"
+                    app:chipSpacingVertical="4dp" />
 
-                </com.google.android.material.chip.ChipGroup>
-
-                <!-- 特性说明小卡片 -->
+                <!-- 特性说明：细腻描边卡片 -->
                 <com.google.android.material.card.MaterialCardView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="24dp"
-                    app:cardBackgroundColor="@color/surface_variant"
-                    app:cardCornerRadius="16dp"
+                    android:layout_marginTop="28dp"
+                    app:cardBackgroundColor="@color/cb_floating_surface"
+                    app:cardCornerRadius="20dp"
                     app:cardElevation="0dp"
-                    app:strokeWidth="0dp">
+                    app:strokeColor="@color/cb_hairline"
+                    app:strokeWidth="1dp">
 
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:orientation="vertical"
-                        android:padding="16dp">
+                        android:padding="18dp">
 
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="💡 核心特性与安全保障"
+                            android:fontFamily="sans-serif-medium"
+                            android:text="核心特性与安全保障"
                             android:textColor="@color/on_surface"
-                            android:textSize="13sp"
-                            android:textStyle="bold" />
+                            android:textSize="13sp" />
+
+                        <View
+                            android:layout_width="match_parent"
+                            android:layout_height="1dp"
+                            android:layout_marginTop="12dp"
+                            android:layout_marginBottom="12dp"
+                            android:background="@color/cb_hairline" />
 
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:layout_marginTop="8dp"
-                            android:lineSpacingExtra="4dp"
+                            android:lineSpacingExtra="5dp"
                             android:text="• 登录网站后点底部「提取」即可查看/导出全部 Cookie（含 HttpOnly）。\n• 「储存库」保存的账号可一键免密直达。\n• 新建「分身」标签可同时登录多个账号，互不串号。\n• 双指可缩放任意网页；长按链接/图片有更多操作。"
                             android:textColor="@color/on_surface_variant"
                             android:textSize="12sp" />
@@ -273,118 +383,147 @@
         </ScrollView>
     </FrameLayout>
 
-    <!-- 底部现代化导航操控栏 -->
-    <!-- 底部导航栏：普通容器 + 等分权重，避免 Toolbar 内边距把按钮挤出屏幕 -->
-    <LinearLayout
+    <!-- ========== 底部：悬浮胶囊控制底栏 ========== -->
+    <com.google.android.material.card.MaterialCardView
         android:id="@+id/bottomAppBar"
         android:layout_width="match_parent"
-        android:layout_height="56dp"
+        android:layout_height="@dimen/cb_dock_height"
         android:layout_gravity="bottom"
-        android:background="@color/surface"
-        android:elevation="6dp"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:paddingStart="4dp"
-        android:paddingEnd="8dp">
+        android:layout_marginStart="14dp"
+        android:layout_marginEnd="14dp"
+        android:layout_marginBottom="@dimen/cb_dock_margin_bottom"
+        android:outlineAmbientShadowColor="@color/cb_shadow"
+        android:outlineSpotShadowColor="@color/cb_shadow"
+        app:cardBackgroundColor="@color/cb_floating_surface"
+        app:cardCornerRadius="30dp"
+        app:cardElevation="10dp"
+        app:cardPreventCornerOverlap="false"
+        app:strokeColor="@color/cb_hairline"
+        app:strokeWidth="1dp"
+        tools:targetApi="p">
 
-        <ImageButton
-            android:id="@+id/btnNavBack"
-            android:layout_width="0dp"
-            android:layout_height="46dp"
-            android:layout_weight="1"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="后退"
-            android:padding="11dp"
-            android:scaleType="fitCenter"
-            android:src="@drawable/ic_arrow_back" />
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="6dp"
+            android:paddingEnd="8dp">
 
-        <ImageButton
-            android:id="@+id/btnNavForward"
-            android:layout_width="0dp"
-            android:layout_height="46dp"
-            android:layout_weight="1"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="前进"
-            android:padding="11dp"
-            android:scaleType="fitCenter"
-            android:src="@drawable/ic_arrow_forward" />
+            <ImageButton
+                android:id="@+id/btnNavBack"
+                android:layout_width="0dp"
+                android:layout_height="44dp"
+                android:layout_weight="1"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="后退"
+                android:padding="11dp"
+                android:scaleType="fitCenter"
+                android:src="@drawable/ic_arrow_back"
+                app:tint="@color/cb_icon" />
 
-        <ImageButton
-            android:id="@+id/btnNavHome"
-            android:layout_width="0dp"
-            android:layout_height="46dp"
-            android:layout_weight="1"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="主页"
-            android:padding="11dp"
-            android:scaleType="fitCenter"
-            android:src="@drawable/ic_home" />
+            <ImageButton
+                android:id="@+id/btnNavForward"
+                android:layout_width="0dp"
+                android:layout_height="44dp"
+                android:layout_weight="1"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="前进"
+                android:padding="11dp"
+                android:scaleType="fitCenter"
+                android:src="@drawable/ic_arrow_forward"
+                app:tint="@color/cb_icon" />
 
-        <ImageButton
-            android:id="@+id/btnNavStorage"
-            android:layout_width="0dp"
-            android:layout_height="46dp"
-            android:layout_weight="1"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Cookie 储存库"
-            android:padding="11dp"
-            android:scaleType="fitCenter"
-            android:src="@drawable/ic_storage" />
+            <ImageButton
+                android:id="@+id/btnNavHome"
+                android:layout_width="0dp"
+                android:layout_height="44dp"
+                android:layout_weight="1"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="主页"
+                android:padding="11dp"
+                android:scaleType="fitCenter"
+                android:src="@drawable/ic_home"
+                app:tint="@color/cb_icon" />
 
-        <!-- 多窗口标签切换 (带窗口数量角标) -->
-        <FrameLayout
-            android:id="@+id/btnNavTabs"
-            android:layout_width="0dp"
-            android:layout_height="46dp"
-            android:layout_weight="1"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:clickable="true"
-            android:contentDescription="多窗口"
-            android:focusable="true">
+            <!-- 多标签：图标 + 右上角数量角标 -->
+            <FrameLayout
+                android:id="@+id/btnNavTabs"
+                android:layout_width="0dp"
+                android:layout_height="44dp"
+                android:layout_weight="1"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:clickable="true"
+                android:contentDescription="多窗口"
+                android:focusable="true">
 
-            <ImageView
-                android:layout_width="22dp"
-                android:layout_height="22dp"
-                android:layout_gravity="center"
-                android:importantForAccessibility="no"
-                android:src="@drawable/ic_tabs" />
+                <ImageView
+                    android:layout_width="22dp"
+                    android:layout_height="22dp"
+                    android:layout_gravity="center"
+                    android:importantForAccessibility="no"
+                    android:src="@drawable/ic_tabs"
+                    app:tint="@color/cb_icon" />
 
-            <TextView
-                android:id="@+id/tvTabBadge"
+                <TextView
+                    android:id="@+id/tvTabBadge"
+                    android:layout_width="wrap_content"
+                    android:layout_height="16dp"
+                    android:layout_gravity="center"
+                    android:layout_marginStart="13dp"
+                    android:layout_marginBottom="13dp"
+                    android:background="@drawable/bg_tab_badge"
+                    android:fontFamily="sans-serif-medium"
+                    android:gravity="center"
+                    android:includeFontPadding="false"
+                    android:minWidth="16dp"
+                    android:paddingStart="4dp"
+                    android:paddingEnd="4dp"
+                    android:text="1"
+                    android:textColor="@color/on_primary"
+                    android:textSize="9sp"
+                    tools:text="12" />
+            </FrameLayout>
+
+            <ImageButton
+                android:id="@+id/btnNavStorage"
+                android:layout_width="0dp"
+                android:layout_height="44dp"
+                android:layout_weight="1"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Cookie 储存库"
+                android:padding="11dp"
+                android:scaleType="fitCenter"
+                android:src="@drawable/ic_storage"
+                app:tint="@color/cb_icon" />
+
+            <!-- Cookie 提取：品牌色胶囊，全栏唯一的实心元素 -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnNavExtract"
+                style="@style/Widget.Material3.Button"
                 android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_gravity="center"
-                android:gravity="center"
-                android:text="1"
-                android:textColor="@color/on_surface_variant"
-                android:textSize="10sp"
-                android:textStyle="bold" />
-        </FrameLayout>
+                android:layout_height="42dp"
+                android:layout_marginStart="4dp"
+                android:fontFamily="sans-serif-medium"
+                android:insetTop="0dp"
+                android:insetBottom="0dp"
+                android:minWidth="0dp"
+                android:paddingStart="12dp"
+                android:paddingEnd="14dp"
+                android:text="@string/extract_cookies"
+                android:textColor="@color/on_primary"
+                android:textSize="14sp"
+                app:backgroundTint="@color/primary"
+                app:cornerRadius="21dp"
+                app:icon="@drawable/ic_cookie"
+                app:iconPadding="6dp"
+                app:iconSize="18dp"
+                app:iconTint="@color/on_primary"
+                app:rippleColor="@color/cb_ripple_on_primary" />
+        </LinearLayout>
+    </com.google.android.material.card.MaterialCardView>
 
-        <!-- 核心提取胶囊按钮 -->
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnNavExtract"
-            style="@style/Widget.Material3.Button"
-            android:layout_width="wrap_content"
-            android:layout_height="44dp"
-            android:layout_marginStart="4dp"
-            android:insetTop="0dp"
-            android:insetBottom="0dp"
-            android:minWidth="0dp"
-            android:paddingStart="14dp"
-            android:paddingEnd="16dp"
-            android:text="@string/extract_cookies"
-            android:textColor="@color/on_primary"
-            android:textSize="14sp"
-            app:backgroundTint="@color/primary"
-            app:cornerRadius="22dp"
-            app:icon="@drawable/ic_cookie"
-            app:iconPadding="6dp"
-            app:iconSize="18dp"
-            app:iconTint="@color/on_primary" />
-    </LinearLayout>
-
-    <!-- 网页视频全屏容器 -->
+    <!-- 网页视频全屏容器（高于悬浮底栏） -->
     <FrameLayout
         android:id="@+id/layoutFullscreen"
         android:layout_width="match_parent"
