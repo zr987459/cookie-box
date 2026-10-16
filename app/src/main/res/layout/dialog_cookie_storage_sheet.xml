@@ -33,6 +33,19 @@
             android:textStyle="bold" />
 
         <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnOpenAccounts"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            android:minWidth="0dp"
+            android:paddingHorizontal="8dp"
+            android:text="🔐 账号"
+            android:textColor="@color/primary"
+            android:textSize="12sp" />
+
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/btnCookieTutorial"
             style="@style/Widget.Material3.Button.TextButton"
             android:layout_width="wrap_content"
