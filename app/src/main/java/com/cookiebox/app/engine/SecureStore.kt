@@ -29,7 +29,12 @@ class SecureStore(private val keyAlias: String) {
     @Synchronized
     private fun key(): SecretKey {
         val ks = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
-        (ks.getEntry(keyAlias, null) as? KeyStore.SecretKeyEntry)?.let { return it.secretKey }
+        if (ks.containsAlias(keyAlias)) {
+            // 别名已存在却取不出密钥时只能报错，绝不能重新生成：
+            // generateKey() 会覆盖同名旧密钥，已有密文将永久无法解密。
+            return ks.getKey(keyAlias, null) as? SecretKey
+                ?: throw IllegalStateException("Keystore entry '$keyAlias' exists but is unreadable")
+        }
         val gen = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
         gen.init(
             KeyGenParameterSpec.Builder(keyAlias, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
