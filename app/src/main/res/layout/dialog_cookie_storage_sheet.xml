@@ -16,65 +16,82 @@
         android:layout_marginBottom="12dp"
         android:background="@drawable/bg_search_box" />
 
-    <!-- 标题与状态 -->
+    <!-- 标题第一行：主标题与功能操作 -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:gravity="center_vertical"
         android:orientation="horizontal">
 
-        <LinearLayout
+        <TextView
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:orientation="vertical">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/storage_vault"
-                android:textColor="@color/on_surface"
-                android:textSize="18sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/tvStorageSubtitle"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
-                android:textColor="@color/on_surface_variant"
-                android:textSize="12sp"
-                tools:text="已持久保存 3 个网站凭据" />
-        </LinearLayout>
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnKeepAliveAll"
-            style="@style/Widget.Material3.Button.TonalButton"
-            android:layout_width="wrap_content"
-            android:layout_height="36dp"
-            android:insetTop="0dp"
-            android:insetBottom="0dp"
-            android:paddingHorizontal="8dp"
-            android:text="⚡ 一键全量保鲜"
-            android:textColor="@color/primary"
-            android:textSize="11sp"
-            app:cornerRadius="10dp" />
+            android:text="@string/storage_vault"
+            android:textColor="@color/on_surface"
+            android:textSize="18sp"
+            android:textStyle="bold" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnCookieTutorial"
             style="@style/Widget.Material3.Button.TextButton"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="💡指南"
-            android:textColor="@color/primary" />
+            android:layout_height="36dp"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            android:minWidth="0dp"
+            android:paddingHorizontal="8dp"
+            android:text="💡 使用指南"
+            android:textColor="@color/primary"
+            android:textSize="12sp" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnClearStorage"
             style="@style/Widget.Material3.Button.TextButton"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+            android:layout_height="36dp"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            android:minWidth="0dp"
+            android:paddingHorizontal="8dp"
             android:text="清空"
-            android:textColor="@color/danger" />
+            android:textColor="@color/danger"
+            android:textSize="12sp" />
+    </LinearLayout>
+
+    <!-- 标题第二行：账号数量统计与一键全量保鲜按钮 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/tvStorageSubtitle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:textColor="@color/on_surface_variant"
+            android:textSize="12sp"
+            tools:text="已持久保存 2 个网站账号凭据" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnKeepAliveAll"
+            style="@style/Widget.Material3.Button.TonalButton"
+            android:layout_width="wrap_content"
+            android:layout_height="32dp"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            android:minWidth="0dp"
+            android:paddingHorizontal="10dp"
+            android:text="⚡ 一键全量保鲜"
+            android:textColor="@color/primary"
+            android:textSize="11sp"
+            app:cornerRadius="8dp"
+            app:icon="@drawable/ic_bolt"
+            app:iconSize="12dp"
+            app:iconTint="@color/primary" />
     </LinearLayout>
 
     <!-- 搜索输入框 -->
