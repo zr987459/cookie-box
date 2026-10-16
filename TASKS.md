@@ -9,7 +9,7 @@
 
 | ID | 任务 | 范围（只能改这些） | 验收 | 依赖 | 状态 |
 |---|---|---|---|---|---|
-| T-001 | 把 integrate/1.7 上的加固提交 7288fb1 合入 main（两边已分叉，用 merge commit），并完成一次编译与覆盖安装验证 | 合并操作；不改代码 | `assembleDebug` 通过；main 同时包含 7288fb1 与 09f6d04；从 1.6.12 与 1.7.0(c7bcce2) 覆盖安装后储存库记录数不变 | 需主人批准（CI 手动运行会发预发布版） | 待办 |
+| T-001 | 把 integrate/1.7 上的加固提交 7288fb1 合入 main（两边已分叉，用 merge commit），并完成一次编译与覆盖安装验证 | 合并操作；不改代码 | `assembleDebug` 通过；main 同时包含 7288fb1 与 09f6d04；从 1.6.12 与 1.7.0(c7bcce2) 覆盖安装后储存库记录数不变 | 需主人批准（CI 手动运行会发预发布版） | 完成 |
 | T-002 | AccountVault 密钥获取改为「别名存在就不重建」，与 SecureStore 同规则（可直接复用 SecureStore，别名 `cookiebox_account_key` 不变） | `engine/AccountVault.kt` | 别名存在但取不出时返回失败而不是生成新密钥；1.7.0 覆盖安装后已存账号可解密 | — | 待办 |
 | T-003 | 签名密钥泄露处置方案（决策文档，不改代码） | `docs/adr/0002-signing-key.md` | 列出选项与对已安装用户的影响：A 维持现状并记录风险；B 新密钥 + APK v3 签名轮换（Android 9+ 可平滑升级，7–8 需重装）；C 新密钥，全员重装（会丢本地数据，不推荐）。是否清理 git 历史（需 force push）由主人决定 | — | 阻塞(待主人决策) |
 | T-004 | CI 拆分：`integrate/**`、`task/**` 推送只编译不发布；发布仅 main / tag；加入 gitleaks 密钥扫描步骤 | `.github/workflows/` | 推任务分支只出 Artifact 不出 Release；扫描能跑通（已知的 jks/口令先加入白名单并注明 T-003） | — | 待办 |
