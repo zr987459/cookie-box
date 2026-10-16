@@ -117,6 +117,20 @@ class MainActivity : AppCompatActivity() {
                 }
             })();
         """.trimIndent()
+
+        /** 电脑版：把布局视口强制改为 1024px，让响应式网站按桌面宽度排版，再缩放适配屏幕 */
+        private val FORCE_DESKTOP_VIEWPORT_JS = """
+            (function () {
+                var w = 1024;
+                var m = document.querySelector("meta[name='viewport']");
+                if (!m) {
+                    m = document.createElement('meta');
+                    m.setAttribute('name', 'viewport');
+                    (document.head || document.documentElement).appendChild(m);
+                }
+                m.setAttribute('content', 'width=' + w + ', initial-scale=' + (screen.width / w) + ', user-scalable=yes');
+            })();
+        """.trimIndent()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -404,6 +418,7 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
                 unlockZoom(view)
+                if (newTab.isDesktop) applyDesktopViewport(view)
                 if (newTab.id == activeTabId) updateNavButtons()
             }
 
@@ -494,6 +509,12 @@ class MainActivity : AppCompatActivity() {
                 host.endsWith("accounts.google.com") || host.endsWith("accounts.youtube.com") ||
                 path.contains("/login") || path.contains("/signin") || path.contains("/signup") ||
                 (host == "hark.com" && path.contains("login"))
+    }
+
+    private fun applyDesktopViewport(view: WebView?) {
+        val wv = view ?: return
+        if (isSensitiveLoginPage(wv.url)) return
+        wv.evaluateJavascript(FORCE_DESKTOP_VIEWPORT_JS, null)
     }
 
     private fun unlockZoom(view: WebView?) {
