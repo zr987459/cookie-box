@@ -492,8 +492,8 @@ class MainActivity : AppCompatActivity() {
         return host.startsWith("accounts.") || host.startsWith("login.") || host.startsWith("signin.") ||
                 host.startsWith("passport.") || host.startsWith("auth.") || host.startsWith("sso.") ||
                 host.endsWith("accounts.google.com") || host.endsWith("accounts.youtube.com") ||
-                path.contains("login") || path.contains("signin") || path.contains("auth") || path.contains("signup") ||
-                host == "hark.com"
+                path.contains("/login") || path.contains("/signin") || path.contains("/signup") ||
+                (host == "hark.com" && path.contains("login"))
     }
 
     private fun unlockZoom(view: WebView?) {

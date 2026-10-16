@@ -56,11 +56,12 @@ class TabsAdapter(
     }
 
     private fun resolveTabDomain(tab: TabItem): Pair<String, String> {
-        if (tab.url.isBlank() || tab.url == "about:blank") {
+        val effectiveUrl = tab.webView?.url?.takeIf { it != "about:blank" } ?: tab.pendingUrl ?: tab.url
+        if (effectiveUrl.isBlank() || effectiveUrl == "about:blank") {
             return Pair("新标签页", "")
         }
         val host = try {
-            Uri.parse(tab.url).host ?: ""
+            Uri.parse(effectiveUrl).host ?: ""
         } catch (e: Exception) {
             ""
         }
