@@ -1139,6 +1139,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun openStorageDialog() {
         val dialog = StorageBottomSheetDialog.newInstance()
+        dialog.defaultUserAgent = defaultMobileUa
+        dialog.customCookieManager = getActiveTab()?.customCookieManager
         // 一键直达并注入 Cookie 核心交互
         dialog.onLaunchRecord = { record ->
             launchWithSavedCookie(record)

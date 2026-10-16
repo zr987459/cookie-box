@@ -48,11 +48,24 @@
         </LinearLayout>
 
         <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnKeepAliveAll"
+            style="@style/Widget.Material3.Button.TonalButton"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            android:paddingHorizontal="8dp"
+            android:text="⚡ 一键全量保鲜"
+            android:textColor="@color/primary"
+            android:textSize="11sp"
+            app:cornerRadius="10dp" />
+
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/btnCookieTutorial"
             style="@style/Widget.Material3.Button.TextButton"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="💡 使用指南"
+            android:text="💡指南"
             android:textColor="@color/primary" />
 
         <com.google.android.material.button.MaterialButton

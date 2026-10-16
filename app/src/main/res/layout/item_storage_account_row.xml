@@ -41,6 +41,20 @@
             android:textStyle="bold"
             tools:text="主账号" />
 
+        <!-- 存活健康度角标 -->
+        <TextView
+            android:id="@+id/tvHealthBadge"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="6dp"
+            android:background="@drawable/bg_search_box"
+            android:paddingHorizontal="5dp"
+            android:paddingVertical="1dp"
+            android:text="⚪ 未检测"
+            android:textColor="@color/on_surface_variant"
+            android:textSize="9sp"
+            tools:text="💚 正常保鲜" />
+
         <TextView
             android:id="@+id/tvAccountCookiesBadge"
             android:layout_width="wrap_content"
@@ -85,21 +99,42 @@
             style="@style/Widget.Material3.Button"
             android:layout_width="0dp"
             android:layout_height="30dp"
-            android:layout_weight="1.2"
+            android:layout_weight="1"
             android:insetTop="0dp"
             android:insetBottom="0dp"
-            android:paddingHorizontal="6dp"
-            android:text="进入网站"
+            android:paddingHorizontal="4dp"
+            android:text="进入"
             android:textColor="@color/on_primary"
             android:textSize="10sp"
             app:backgroundTint="@color/primary"
             app:cornerRadius="8dp"
             app:icon="@drawable/ic_open_in_browser"
-            app:iconSize="12dp"
+            app:iconSize="11dp"
             app:iconTint="@color/on_primary" />
 
         <Space
-            android:layout_width="5dp"
+            android:layout_width="4dp"
+            android:layout_height="wrap_content" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnKeepAliveAccount"
+            style="@style/Widget.Material3.Button.TonalButton"
+            android:layout_width="0dp"
+            android:layout_height="30dp"
+            android:layout_weight="1.1"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            android:paddingHorizontal="4dp"
+            android:text="保鲜续期"
+            android:textColor="@color/primary"
+            android:textSize="10sp"
+            app:cornerRadius="8dp"
+            app:icon="@drawable/ic_bolt"
+            app:iconSize="11dp"
+            app:iconTint="@color/primary" />
+
+        <Space
+            android:layout_width="4dp"
             android:layout_height="wrap_content" />
 
         <com.google.android.material.button.MaterialButton
@@ -107,16 +142,16 @@
             style="@style/Widget.Material3.Button.TonalButton"
             android:layout_width="0dp"
             android:layout_height="30dp"
-            android:layout_weight="1"
+            android:layout_weight="0.9"
             android:insetTop="0dp"
             android:insetBottom="0dp"
-            android:paddingHorizontal="6dp"
-            android:text="复制 Header"
+            android:paddingHorizontal="4dp"
+            android:text="复制"
             android:textSize="10sp"
             app:cornerRadius="8dp" />
 
         <Space
-            android:layout_width="5dp"
+            android:layout_width="4dp"
             android:layout_height="wrap_content" />
 
         <com.google.android.material.button.MaterialButton
@@ -127,7 +162,7 @@
             android:layout_weight="0.8"
             android:insetTop="0dp"
             android:insetBottom="0dp"
-            android:paddingHorizontal="6dp"
+            android:paddingHorizontal="4dp"
             android:text="详情"
             android:textSize="10sp"
             app:cornerRadius="8dp" />

@@ -8,9 +8,12 @@ data class SavedCookieRecord(
     val title: String,
     val domain: String,
     val url: String,
-    val cookieJson: String,
-    val count: Int,
-    val timestamp: Long = System.currentTimeMillis()
+    var cookieJson: String,
+    var count: Int,
+    val timestamp: Long = System.currentTimeMillis(),
+    var lastCheckTime: Long = 0L,
+    var checkStatus: Int = 0, // 0: 未检测, 200: 正常存活, 401: 已失效
+    var statusMessage: String = ""
 ) {
     fun getCookieList(): List<CookieItem> {
         val list = mutableListOf<CookieItem>()
@@ -18,12 +21,16 @@ data class SavedCookieRecord(
             val array = JSONArray(cookieJson)
             for (i in 0 until array.length()) {
                 val obj = array.getJSONObject(i)
+                val isSecure = obj.optBoolean("isSecure", false) ||
+                        obj.optString("name").startsWith("__Secure-") ||
+                        obj.optString("name").startsWith("__Host-")
                 list.add(
                     CookieItem(
                         name = obj.optString("name"),
                         value = obj.optString("value"),
                         domain = obj.optString("domain", domain),
-                        path = obj.optString("path", "/")
+                        path = obj.optString("path", "/"),
+                        isSecure = isSecure
                     )
                 )
             }
@@ -42,6 +49,9 @@ data class SavedCookieRecord(
         obj.put("cookieJson", cookieJson)
         obj.put("count", count)
         obj.put("timestamp", timestamp)
+        obj.put("lastCheckTime", lastCheckTime)
+        obj.put("checkStatus", checkStatus)
+        obj.put("statusMessage", statusMessage)
         return obj
     }
 
@@ -54,7 +64,10 @@ data class SavedCookieRecord(
                 url = obj.optString("url", ""),
                 cookieJson = obj.optString("cookieJson", "[]"),
                 count = obj.optInt("count", 0),
-                timestamp = obj.optLong("timestamp", System.currentTimeMillis())
+                timestamp = obj.optLong("timestamp", System.currentTimeMillis()),
+                lastCheckTime = obj.optLong("lastCheckTime", 0L),
+                checkStatus = obj.optInt("checkStatus", 0),
+                statusMessage = obj.optString("statusMessage", "")
             )
         }
     }

@@ -3,7 +3,9 @@ package com.cookiebox.app.ui
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.RecyclerView
+import com.cookiebox.app.R
 import com.cookiebox.app.databinding.ItemStorageAccountRowBinding
 import com.cookiebox.app.databinding.ItemStorageRecordBinding
 import com.cookiebox.app.engine.DomainUtils
@@ -15,6 +17,7 @@ import java.util.Locale
 
 class StorageAdapter(
     private val onLaunchWithCookie: (SavedCookieRecord) -> Unit,
+    private val onKeepAlive: (SavedCookieRecord) -> Unit,
     private val onQuickCopy: (SavedCookieRecord) -> Unit,
     private val onViewDetails: (SavedCookieRecord) -> Unit,
     private val onDelete: (SavedCookieRecord) -> Unit
@@ -43,7 +46,6 @@ class StorageAdapter(
             }
         }
 
-        // 按网站顶级根域名自动归类合并到同一卡片
         val groupMap = LinkedHashMap<String, WebsiteGroup>()
         for (record in filteredRecords) {
             val root = DomainUtils.getRootDomain(record.domain).ifEmpty { record.domain }
@@ -51,17 +53,15 @@ class StorageAdapter(
                 WebsiteGroup(
                     domain = if (record.domain.isNotEmpty()) record.domain else root,
                     rootDomain = root,
-                    isExpanded = false // 默认抽屉折叠收起，极致紧凑省空间
+                    isExpanded = false
                 )
             }
             group.accounts.add(record)
         }
 
-        // 若搜索过滤时，默认自动展开匹配的网站卡片，方便查看
         if (query.isNotBlank()) {
             groupMap.values.forEach { it.isExpanded = true }
         } else if (groupMap.size == 1) {
-            // 若只有一个网站，自动展开
             groupMap.values.firstOrNull()?.isExpanded = true
         }
 
@@ -91,16 +91,13 @@ class StorageAdapter(
             binding.tvWebsiteDomain.text = displayDomain
             binding.tvAccountsCountBadge.text = "${group.accounts.size} 个账号"
 
-            // 抽屉展开状态更新
             updateExpandState(group.isExpanded, animate = false)
 
-            // 点击卡片头部栏，触发抽屉展开/折叠
             binding.layoutHeaderClickable.setOnClickListener {
                 group.isExpanded = !group.isExpanded
                 updateExpandState(group.isExpanded, animate = true)
             }
 
-            // 动态填充该网站下的所有账号行
             binding.layoutAccountsContainer.removeAllViews()
             val inflater = LayoutInflater.from(binding.root.context)
 
@@ -113,11 +110,30 @@ class StorageAdapter(
                 rowBinding.tvAccountCookiesBadge.text = "${account.count} 项"
                 rowBinding.tvAccountTime.text = dateFormat.format(Date(account.timestamp))
 
-                // 首项账号隐藏顶部分割线
+                // 健康度角标显示
+                when (account.checkStatus) {
+                    200 -> {
+                        rowBinding.tvHealthBadge.text = "💚 存活"
+                        rowBinding.tvHealthBadge.setTextColor(ContextCompat.getColor(binding.root.context, R.color.success))
+                    }
+                    401 -> {
+                        rowBinding.tvHealthBadge.text = "⚠️ 失效"
+                        rowBinding.tvHealthBadge.setTextColor(ContextCompat.getColor(binding.root.context, R.color.danger))
+                    }
+                    else -> {
+                        rowBinding.tvHealthBadge.text = "⚪ 未检测"
+                        rowBinding.tvHealthBadge.setTextColor(ContextCompat.getColor(binding.root.context, R.color.on_surface_variant))
+                    }
+                }
+
                 rowBinding.topDividerAccount.visibility = if (index == 0) View.GONE else View.VISIBLE
 
                 rowBinding.btnLaunchAccount.setOnClickListener {
                     onLaunchWithCookie(account)
+                }
+
+                rowBinding.btnKeepAliveAccount.setOnClickListener {
+                    onKeepAlive(account)
                 }
 
                 rowBinding.btnCopyAccount.setOnClickListener {
