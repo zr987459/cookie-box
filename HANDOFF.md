@@ -2,6 +2,24 @@
 
 模板见 AGENTS.md 第 6 节。
 
+## 2026-10-17 03:30 CST · 审查者 · R-002（二轮审查 b036eee：R-001 整改复核）
+- 分支 / 提交：task/ui-security-refactor @ b036eee（本条为审查记录提交，parent = b036eee，force=false，未改任何功能代码）
+- 结论：**仍打回（Request Changes），不允许合并入 main。** 代码层阻断已清除，剩余为 T-015 状态失实与流程阻断；本分支若要合，目标仍是 integrate/1.7，合 main 由仓库主人决定
+- R-001 阻断逐项复核：
+  - 【已消除·编译】CookieBottomSheetDialog / StorageBottomSheetDialog 已补 `import android.os.Build`；MainActivity 原本已有该 import。静态检查未见其他未解析引用（未本地编译）
+  - 【已消除·越范围】`navigator.webdriver` 覆写已删除
+  - 【已消除·外泄与竞态】动态 add/remove 已删除，ReferenceError、桥漏到下一页、并发注销竞态均不再存在
+  - 【新阻断·T-015 状态失实】所谓「恢复安全的稳定下载桥注册」实际是把第 471 行恢复为 `webView.addJavascriptInterface(BlobBridge(), "CookieBoxDl")`——与基线 b3be689 逐行相同，即对所有网页全局暴露。这只是回退，不是修复：T-015 验收「普通网页 window.CookieBoxDl 不存在」不满足，提交标题与说明中「杜绝」「加固」措辞不实。可接受的处理二选一：(a) 本分支声明不含 T-015，TASKS 中 T-015 回到「待办」（本审查已改）；(b) 另开 `task/T-015-blob-bridge` 按首选方案用 `WebViewCompat.addWebMessageListener`（仅主框架 + 当前页 origin + 保留一次性 token）实现
+  - 【仍阻断·流程，R-001 已提未改】单分支仍夹带 T-002 + T-007 + UI 换肤；versionCode 27→28 / versionName 1.8.0 仍无对应任务；分支名不符 `task/<任务ID>-<短名>`、从 main 切出；b036eee 提交信息无正文、无「兼容性影响」、无 `Task: T-xxx` 末行；本次整改未在 HANDOFF 追加开发者记录、未改 TASKS 状态（违反 §6）
+- 逐项意见：
+  - T-002：无变化，代码通过。建议（非阻断）仍为 `upsert()` 调用点（MainActivity 约 1389 行、AccountsBottomSheetDialog 约 223 行）捕获 IllegalStateException
+  - T-007：代码通过。`clip.description.extras = PersistableBundle()` 写法正确（API 24+ 有 setExtras），13+ 才置位，低版本不变；AccountsBottomSheetDialog 为原有实现
+  - UI：`search_border` token 已落实，通过。`BottomSheetDialogTheme` 父主题由 `Theme.Design.Light.BottomSheetDialog` 改为 `Theme.Material3.DayNight.BottomSheetDialog`，这不是「恢复」而是新改动；仓库无 values-night，且该主题未覆盖 colorSurface 等色值，需在亮/暗两种系统模式下目测底部弹窗；状态栏/导航栏 light 标志改 false 仍需在亮色系统下确认可读。以上均应随换肤另立任务
+- 未完成 / 风险：未本地编译、未真机验证（本棒仅通过 GitHub API 阅读代码）；CookieBoxDl 全局暴露风险与 main 现状相同、仍未处理；T-003 签名泄露仍阻塞
+- 兼容性验证：未编译、未真机验证。静态检查：b036eee 未改 SharedPreferences 键名与 Keystore 别名，不涉及存储
+- 泄露自查：本审查提交无新增密钥、口令或真实数据；被审 diff 未见新增密钥或敏感日志
+- 下一棒建议：开发者从 integrate/1.7 切 `task/T-002-account-key`、`task/T-007-clip-sensitive` 分别 cherry-pick 对应改动（不带 versionCode 与换肤），补规范提交信息与 HANDOFF 后提交 R-003；T-015 按 addWebMessageListener 重新认领；换肤与版本号由主人决定是否立项
+
 ## 2026-10-17 03:15 CST · 审查者 · R-001（审查 bd614ed：T-002 / T-007 / T-015 + 越范围改动）
 - 分支 / 提交：task/ui-security-refactor @ bd614ed（本条为审查记录提交，parent = bd614ed，force=false，未改任何功能代码）
 - 结论：**打回（Request Changes），不允许合并入 main。** 目标也应先合回 integrate/1.7，合 main 由仓库主人决定（AGENTS §1/§2）
