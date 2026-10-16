@@ -36,6 +36,7 @@ class StorageBottomSheetDialog : BottomSheetDialogFragment() {
     var onViewRecordDetails: ((SavedCookieRecord) -> Unit)? = null
     var onLaunchRecord: ((SavedCookieRecord) -> Unit)? = null
     var onDismissListener: (() -> Unit)? = null
+    var onOpenAccounts: (() -> Unit)? = null
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -75,6 +76,7 @@ class StorageBottomSheetDialog : BottomSheetDialogFragment() {
             },
             onDelete = { record ->
                 repo.deleteRecord(record.id)
+                com.cookiebox.app.engine.AccountVault(requireContext()).unlinkCookie(record.id)
                 Toast.makeText(requireContext(), R.string.record_deleted, Toast.LENGTH_SHORT).show()
                 refreshData()
             }
@@ -115,6 +117,11 @@ class StorageBottomSheetDialog : BottomSheetDialogFragment() {
             }
 
             // 💡 新手教程与常见使用场景弹窗
+            b.btnOpenAccounts.setOnClickListener {
+                dismiss()
+                onOpenAccounts?.invoke()
+            }
+
             b.btnCookieTutorial.setOnClickListener {
                 showTutorialDialog()
             }

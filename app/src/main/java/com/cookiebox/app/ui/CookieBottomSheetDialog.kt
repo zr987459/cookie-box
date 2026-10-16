@@ -259,8 +259,31 @@ class CookieBottomSheetDialog : BottomSheetDialogFragment() {
                 )
                 repo.saveRecord(record)
                 Toast.makeText(requireContext(), "✅ 已成功保存「$finalTitle」到储存库！", Toast.LENGTH_SHORT).show()
+                offerLinkToAccount(record)
             }
             .setNegativeButton("取消", null)
+            .show()
+    }
+
+    /** 保存 Cookie 后，若该网站在账号管理里有账号，绑定上以便一键免密 */
+    private fun offerLinkToAccount(record: SavedCookieRecord) {
+        val ctx = context ?: return
+        val vault = com.cookiebox.app.engine.AccountVault(ctx)
+        val accounts = vault.getForSite(record.domain.ifBlank { record.url })
+        if (accounts.isEmpty()) return
+        val same = accounts.firstOrNull { it.username == record.title || (it.note.isNotBlank() && it.note == record.title) }
+        if (same != null) {
+            vault.save(same.copy(linkedCookieId = record.id))
+            return
+        }
+        val names = accounts.map { a -> a.username.ifBlank { "（未填账号）" } + if (a.note.isNotBlank()) " · ${a.note}" else "" }
+        androidx.appcompat.app.AlertDialog.Builder(ctx)
+            .setTitle("绑定到账号管理里的哪个账号？")
+            .setItems(names.toTypedArray()) { _, i ->
+                vault.save(accounts[i].copy(linkedCookieId = record.id))
+                Toast.makeText(ctx, "已绑定，可在账号管理里一键免密进入", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("不绑定", null)
             .show()
     }
 

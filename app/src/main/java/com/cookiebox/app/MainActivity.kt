@@ -46,12 +46,16 @@ import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import com.cookiebox.app.databinding.ActivityMainBinding
+import com.cookiebox.app.engine.AccountAutofill
+import com.cookiebox.app.engine.AccountVault
 import com.cookiebox.app.engine.BrowserPrefs
 import com.cookiebox.app.engine.DomainUtils
 import com.cookiebox.app.engine.FileDownloader
 import com.cookiebox.app.engine.WebTranslator
 import com.cookiebox.app.model.SavedCookieRecord
 import com.cookiebox.app.model.TabItem
+import com.cookiebox.app.model.AccountCredential
+import com.cookiebox.app.ui.AccountsBottomSheetDialog
 import com.cookiebox.app.ui.CookieBottomSheetDialog
 import com.cookiebox.app.ui.StorageBottomSheetDialog
 import com.cookiebox.app.ui.TabsBottomSheetDialog
@@ -67,6 +71,13 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var prefs: BrowserPrefs
+    private lateinit var vault: AccountVault
+    private val mainHandler = Handler(Looper.getMainLooper())
+
+    /** 打开网站后等待自动填入的账号：tabId -> (账号, 密码) */
+    private val pendingFills = HashMap<String, Pair<AccountCredential, String>>()
+    /** 每个页面只提示一次可填入：tabId -> url */
+    private val fillPromptedUrl = HashMap<String, String>()
 
     private val tabs = mutableListOf<TabItem>()
     private var activeTabId: String = ""
@@ -149,6 +160,7 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
         prefs = BrowserPrefs(this)
+        vault = AccountVault(this)
 
         restoreSessionOrCreateTab()
 
@@ -430,6 +442,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 unlockZoom(view)
                 if (newTab.isDesktop) applyDesktopViewport(view)
+                checkLoginForm(newTab)
                 if (newTab.id == activeTabId) updateNavButtons()
             }
 
@@ -934,6 +947,8 @@ class MainActivity : AppCompatActivity() {
         }
         m.add(0, 11, 10, "搜索引擎：${prefs.searchEngine}")
         m.add(0, 12, 11, "清除当前身份的 Cookie 和缓存")
+        m.add(0, 13, 1, "账号管理（账号密码）")
+        if (hasPage) m.add(0, 14, 2, "保存本页填写的账号密码")
 
         popup.setOnMenuItemClickListener { item ->
             val wv = tab?.webView
@@ -961,6 +976,8 @@ class MainActivity : AppCompatActivity() {
                 10 -> tab?.let { openExternally(wv?.url ?: it.url) }
                 11 -> chooseSearchEngine()
                 12 -> showClearCookiesDialog()
+                13 -> openAccountsDialog()
+                14 -> tab?.let { saveCurrentPageLogin(it) }
             }
             true
         }
@@ -1289,7 +1306,132 @@ class MainActivity : AppCompatActivity() {
             detailDialog.customCookieManager = getActiveTab()?.customCookieManager
             detailDialog.show(supportFragmentManager, "CookieDetailSheet")
         }
+        dialog.onOpenAccounts = { openAccountsDialog() }
         dialog.show(supportFragmentManager, "StorageBottomSheet")
+    }
+
+    // ================================================================ 账号管理
+
+    private fun openAccountsDialog() {
+        val tab = getActiveTab()
+        val dialog = AccountsBottomSheetDialog.newInstance()
+        dialog.currentUrl = tab?.webView?.url?.takeIf { it.startsWith("http") } ?: tab?.url ?: ""
+        dialog.onLaunchRecord = { record -> launchWithSavedCookie(record) }
+        dialog.onOpenAndFill = { account, password -> openAndFill(account, password) }
+        dialog.show(supportFragmentManager, "AccountsBottomSheet")
+    }
+
+    /** 当前页就是该网站则直接填入，否则打开该网站，等出现登录框后自动填入 */
+    private fun openAndFill(account: AccountCredential, password: String) {
+        val tab = getActiveTab() ?: createNewTab(initialUrl = "")
+        val wv = tab.webView ?: return
+        val curRoot = AccountVault.rootOf(wv.url ?: tab.url)
+        if (curRoot.equals(account.domain, true)) {
+            fillAccount(wv, account, password)
+        } else {
+            pendingFills[tab.id] = Pair(account, password)
+            loadUrlInTab(tab, account.loginUrl.ifBlank { "https://${account.domain}/" })
+            toast("正在打开 ${account.domain}，出现登录框后会自动填入")
+        }
+    }
+
+    private fun fillAccount(wv: WebView, account: AccountCredential, password: String) {
+        wv.evaluateJavascript(AccountAutofill.fillJs(account.username, password)) { r ->
+            val code = r?.toIntOrNull() ?: 0
+            toast(
+                when {
+                    code >= 3 -> "已填入 ${account.username}"
+                    code == 1 -> "已填入账号，下一步出现密码框时可再次填入"
+                    code == 2 -> "已填入密码"
+                    else -> "这个页面没有找到登录框，可先点进登录页"
+                }
+            )
+        }
+    }
+
+    /** 页面加载完后只读检测一次密码框（SPA 再延迟复查一次），不向页面注入任何东西 */
+    private fun checkLoginForm(tab: TabItem) {
+        val wv = tab.webView ?: return
+        val url = wv.url ?: return
+        if (!url.startsWith("http")) return
+        val hasWork = pendingFills.containsKey(tab.id) || vault.getForSite(url).isNotEmpty()
+        if (!hasWork) return
+        val probe = {
+            if (wv.url == url) {
+                wv.evaluateJavascript(AccountAutofill.DETECT_JS) { r ->
+                    if (r == "true") onPasswordFieldFound(tab)
+                }
+            }
+        }
+        probe()
+        mainHandler.postDelayed({ probe() }, 1500)
+        mainHandler.postDelayed({ probe() }, 4000)
+    }
+
+    /** 用户主动保存：读取本页登录框里已输入的账号密码 */
+    private fun saveCurrentPageLogin(tab: TabItem) {
+        val wv = tab.webView ?: return
+        val (url, root) = tabUrlRoot(tab) ?: return
+        wv.evaluateJavascript(AccountAutofill.READ_JS) { raw ->
+            val arr = try { org.json.JSONArray(raw) } catch (e: Exception) { null }
+            val user = arr?.optString(0).orEmpty().trim()
+            val pass = arr?.optString(1).orEmpty()
+            if (user.isEmpty() && pass.isEmpty()) {
+                toast("本页登录框里还没有填写内容，先输入账号密码再点保存")
+                return@evaluateJavascript
+            }
+            val existing = vault.find(root, user)
+            AlertDialog.Builder(this)
+                .setTitle(if (existing != null) "更新 $root 的账号？" else "保存 $root 的账号？")
+                .setMessage("账号：${user.ifBlank { "（未识别到）" }}\n密码：${if (pass.isEmpty()) "（未填写）" else "已读取，加密保存在本机"}")
+                .setPositiveButton("保存") { _, _ ->
+                    vault.upsert(url, user, pass)
+                    toast("已保存到账号管理")
+                }
+                .setNegativeButton("取消", null)
+                .show()
+        }
+    }
+
+    private fun tabUrlRoot(tab: TabItem): Pair<String, String>? {
+        val url = tab.webView?.url ?: tab.url
+        if (!url.startsWith("http")) return null
+        val root = AccountVault.rootOf(url)
+        return if (root.isEmpty()) null else Pair(url, root)
+    }
+
+    /** 页面出现密码框 */
+    private fun onPasswordFieldFound(tab: TabItem) {
+        val wv = tab.webView ?: return
+        val (url, root) = tabUrlRoot(tab) ?: return
+
+        pendingFills.remove(tab.id)?.let { (acc, pass) ->
+            if (acc.domain.equals(root, true)) { fillAccount(wv, acc, pass); return }
+        }
+        if (tab.id != activeTabId) return
+        if (fillPromptedUrl[tab.id] == url) return
+        val accounts = vault.getForSite(url)
+        if (accounts.isEmpty()) return
+        fillPromptedUrl[tab.id] = url
+
+        val text = if (accounts.size == 1) "使用已保存的 ${accounts[0].username.ifBlank { root }} 登录？"
+        else "$root 有 ${accounts.size} 个已保存账号"
+        Snackbar.make(binding.root, text, 8000)
+            .setAnchorView(binding.bottomAppBar)
+            .setAction("填入") {
+                if (accounts.size == 1) {
+                    fillAccount(wv, accounts[0], vault.passwordOf(accounts[0]) ?: "")
+                } else {
+                    val names = accounts.map { a -> a.username.ifBlank { "（未填账号）" } + if (a.note.isNotBlank()) " · ${a.note}" else "" }
+                    AlertDialog.Builder(this)
+                        .setTitle("选择要填入的账号")
+                        .setItems(names.toTypedArray()) { _, i ->
+                            fillAccount(wv, accounts[i], vault.passwordOf(accounts[i]) ?: "")
+                        }
+                        .show()
+                }
+            }
+            .show()
     }
 
     private fun openToolsDialog() {
