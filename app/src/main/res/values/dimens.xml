@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 悬浮底栏尺寸；网页视窗底部留白 = 高度 + 底边距 + 6dp 呼吸间隙 -->
+    <dimen name="cb_dock_height">60dp</dimen>
+    <dimen name="cb_dock_margin_bottom">12dp</dimen>
+    <dimen name="cb_dock_clearance">78dp</dimen>
+</resources>

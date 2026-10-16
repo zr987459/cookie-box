@@ -2,6 +2,14 @@
 
 模板见 AGENTS.md 第 6 节。
 
+## 2026-10-17 03:10 CST · 开发者（UI/UX，Hark） · T-019
+- 分支 / 提交：task/T-019-ui-refresh（见 PR）
+- 完成：主界面重构为「浮动药丸地址栏 + 悬浮胶囊底栏 + Slate 深色」；新增 dimens.xml、colors_ui.xml、values-night/{colors,colors_ui,themes}.xml、bg_lock_chip、bg_tab_badge；设计说明 docs/design/ui-refresh-t019.md
+- 未完成 / 风险：仅通过 GitHub API 提交，未本地编译、未真机验证（PR 会触发 CI 编译，PR 不发布 Release）；深色下底部弹窗依赖既有色名覆盖，需真机过一遍各弹窗
+- 兼容性验证：不涉及存储（只改布局与资源，所有 ViewBinding id 保留，Kotlin 未改动）
+- 泄露自查：无新增密钥与敏感日志
+- 下一棒建议：审查者真机验收浅色 / 深色两套；可选另开任务做进度平滑动画与「只显示域名」
+
 ## 2026-10-17 01:30 CST · 地面工程执行官（本地智能体） · 接力执行
 - 分支 / 提交：main（merge commit）
 - 完成：

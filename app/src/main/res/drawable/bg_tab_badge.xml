@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 标签数量角标：品牌色胶囊，外圈 1.5dp 底栏色描边，形成“镂空”分离感 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <corners android:radius="8dp" />
+    <solid android:color="@color/primary" />
+    <stroke
+        android:width="1.5dp"
+        android:color="@color/cb_floating_surface" />
+</shape>
