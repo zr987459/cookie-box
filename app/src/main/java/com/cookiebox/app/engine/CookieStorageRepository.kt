@@ -9,11 +9,13 @@ import org.json.JSONArray
  * Cookie 储存库（v1.7.0 起 Keystore AES-256-GCM 加密）。
  *
  * 向后兼容铁律：任何情况下都不清空、不覆盖用户已存的数据。
- *  - 读取：优先读密文 KEY_RECORDS_ENC；没有密文而有旧版明文 KEY_RECORDS，则原样解析并透明迁移。
+ *  - 读取：密文 KEY_RECORDS_ENC 与旧版明文 KEY_RECORDS 都会读；两者同时存在时按 id 合并
+ *          （密文为准），不再直接删除明文，避免降级/降级写入期间新增的记录丢失。
  *  - 迁移：明文先确认是合法 JSON，再加密 + 回读校验，成功后用同一次 commit() 原子地
  *          写入密文并删除明文；任一步失败都保留明文，下次启动再试。
- *  - 密文解不开（例如 Keystore 密钥丢失）：若明文仍在则继续用明文；否则把密文原样备份到
- *          KEY_RECORDS_ENC_UNREADABLE，后续写入绝不覆盖这份备份。
+ *  - 密文解不开（Keystore 暂时异常或密钥丢失）：每一份解不开的密文都单独备份到
+ *          KEY_RECORDS_ENC_UNREADABLE[_时间戳]，覆盖 KEY_RECORDS_ENC 之前也会再检查一次；
+ *          之后每次读取都尝试解开这些备份，能解开就合并回来，合并写入成功后才删除备份。
  *  - 明文 JSON 损坏：原样备份到 KEY_RECORDS_CORRUPT 后再继续，不让后续保存把它覆盖掉。
  *  - 加密不可用（个别 ROM Keystore 异常）：降级为明文写入，保证新数据不丢。
  */
@@ -28,6 +30,7 @@ class CookieStorageRepository(context: Context) {
         /** 旧版明文（v1.6.x 及之前），键名保持不变以便兼容读取 */
         private const val KEY_RECORDS = "key_saved_cookie_records"
         private const val KEY_RECORDS_ENC = "key_saved_cookie_records_enc"
+        /** 前缀：第一份备份就是这个键本身，之后的备份追加 "_<毫秒时间戳>" */
         private const val KEY_RECORDS_ENC_UNREADABLE = "key_saved_cookie_records_enc_unreadable"
         private const val KEY_RECORDS_CORRUPT = "key_saved_cookie_records_corrupt"
         private const val KEY_ALIAS = "cookiebox_cookie_vault_key"
@@ -37,7 +40,7 @@ class CookieStorageRepository(context: Context) {
     }
 
     fun getAllRecords(): List<SavedCookieRecord> = synchronized(LOCK) {
-        parse(loadRaw()).sortedByDescending { it.timestamp }
+        loadRecords().sortedByDescending { it.timestamp }
     }
 
     fun getRecordsByDomain(domain: String): List<SavedCookieRecord> {
@@ -58,71 +61,110 @@ class CookieStorageRepository(context: Context) {
             current.add(0, record)
         }
         persist(current)
+        Unit
     }
 
     fun deleteRecord(id: String) = synchronized(LOCK) {
         val current = getAllRecords().toMutableList()
         current.removeAll { it.id == id }
         persist(current)
+        Unit
     }
 
     /** 用户在储存库里主动点「清空」才会走到这里 */
     fun clearAll() = synchronized(LOCK) {
-        sp.edit()
+        val editor = sp.edit()
             .remove(KEY_RECORDS)
             .remove(KEY_RECORDS_ENC)
-            .remove(KEY_RECORDS_ENC_UNREADABLE)
             .remove(KEY_RECORDS_CORRUPT)
-            .commit()
+        unreadableBackupKeys().forEach { editor.remove(it) }
+        editor.commit()
         Unit
     }
 
     // ------------------------------------------------------------- 内部
 
-    /** 返回当前有效的明文 JSON；没有任何数据时返回 null */
-    private fun loadRaw(): String? {
+    /** 读取全部来源并按 id 合并；必要时完成迁移/恢复（仅在加密写入成功后才删除旧来源） */
+    private fun loadRecords(): List<SavedCookieRecord> {
         val legacy = sp.getString(KEY_RECORDS, null)
         val enc = sp.getString(KEY_RECORDS_ENC, null)
 
+        var encPlain: String? = null
         if (enc != null) {
-            val plain = crypto.decrypt(enc)
-            if (plain != null) {
-                // 已加密；若还残留明文（极少数中断情况），密文为准，顺手删掉明文
-                if (legacy != null) sp.edit().remove(KEY_RECORDS).commit()
-                return plain
-            }
-            // 密文解不开：先保住这份密文，绝不让后续写入覆盖它
-            if (!sp.contains(KEY_RECORDS_ENC_UNREADABLE)) {
-                sp.edit().putString(KEY_RECORDS_ENC_UNREADABLE, enc).commit()
-            }
-            return legacy
+            encPlain = crypto.decrypt(enc)
+            if (encPlain == null) backupUnreadable(enc) // 先保住，绝不让后续写入覆盖它
         }
 
-        if (legacy != null) migrateLegacy(legacy)
-        return legacy
+        // 以前解不开的备份，现在能解开的就收回来
+        val recovered = mutableListOf<SavedCookieRecord>()
+        val recoveredKeys = mutableListOf<String>()
+        for (key in unreadableBackupKeys()) {
+            val plain = sp.getString(key, null)?.let { crypto.decrypt(it) } ?: continue
+            if (!isValidJsonArray(plain)) continue
+            recovered += parse(plain)
+            recoveredKeys += key
+        }
+
+        val legacyValid = legacy != null && isValidJsonArray(legacy)
+        val merged = mergeById(parse(encPlain), recovered, parse(legacy))
+
+        if (legacyValid || recoveredKeys.isNotEmpty()) {
+            // 迁移 / 恢复：只有在加密 + 回读校验成功后，才删除明文和已恢复的备份。
+            // 当前密文若解不开，上面已备份，覆盖它是安全的。
+            writeEncrypted(merged, removeLegacy = legacyValid, removeKeys = recoveredKeys)
+        }
+        return merged
     }
 
-    /** 旧版明文 → 密文。只有在密文写入并校验成功后才删除明文 */
-    private fun migrateLegacy(legacy: String) {
-        if (!isValidJsonArray(legacy)) return // 由 parse() 负责备份损坏数据，这里不动它
-        val enc = crypto.encryptVerified(legacy) ?: return
-        sp.edit()
-            .putString(KEY_RECORDS_ENC, enc)
-            .remove(KEY_RECORDS)
-            .commit()
+    /** 主列表优先；其余来源只补充主列表里没有的 id，宁可多留不可少留 */
+    private fun mergeById(vararg sources: List<SavedCookieRecord>): List<SavedCookieRecord> {
+        val byId = LinkedHashMap<String, SavedCookieRecord>()
+        for (src in sources) for (r in src) if (!byId.containsKey(r.id)) byId[r.id] = r
+        return byId.values.toList()
+    }
+
+    private fun toJson(list: List<SavedCookieRecord>): String {
+        val array = JSONArray()
+        list.forEach { array.put(it.toJson()) }
+        return array.toString()
+    }
+
+    /** 只在加密成功时写入；失败返回 false 且什么都不动 */
+    private fun writeEncrypted(
+        list: List<SavedCookieRecord>,
+        removeLegacy: Boolean,
+        removeKeys: List<String>
+    ): Boolean {
+        val enc = crypto.encryptVerified(toJson(list)) ?: return false
+        val editor = sp.edit().putString(KEY_RECORDS_ENC, enc)
+        if (removeLegacy) editor.remove(KEY_RECORDS)
+        removeKeys.forEach { editor.remove(it) }
+        return editor.commit()
     }
 
     private fun persist(list: List<SavedCookieRecord>) {
-        val array = JSONArray()
-        list.forEach { array.put(it.toJson()) }
-        val json = array.toString()
+        // 覆盖前再确认一次：当前密文若解不开，先备份
+        sp.getString(KEY_RECORDS_ENC, null)?.let { if (crypto.decrypt(it) == null) backupUnreadable(it) }
+        val json = toJson(list)
         val enc = crypto.encryptVerified(json)
         if (enc != null) {
             sp.edit().putString(KEY_RECORDS_ENC, enc).remove(KEY_RECORDS).commit()
         } else {
-            // 加密不可用：降级明文，并去掉旧密文，避免下次读到过期数据（不可读的密文已另行备份）
+            // 加密不可用：降级明文，并去掉旧密文，避免下次读到过期数据（解不开的密文已另行备份）
             sp.edit().putString(KEY_RECORDS, json).remove(KEY_RECORDS_ENC).commit()
         }
+    }
+
+    private fun unreadableBackupKeys(): List<String> =
+        sp.all.keys.filter { it.startsWith(KEY_RECORDS_ENC_UNREADABLE) }.sorted()
+
+    /** 每份不同的解不开的密文各存一份，已有相同内容则跳过 */
+    private fun backupUnreadable(enc: String) {
+        val keys = unreadableBackupKeys()
+        if (keys.any { sp.getString(it, null) == enc }) return
+        val key = if (!sp.contains(KEY_RECORDS_ENC_UNREADABLE)) KEY_RECORDS_ENC_UNREADABLE
+                  else "${KEY_RECORDS_ENC_UNREADABLE}_${System.currentTimeMillis()}"
+        sp.edit().putString(key, enc).commit()
     }
 
     private fun parse(raw: String?): List<SavedCookieRecord> {
