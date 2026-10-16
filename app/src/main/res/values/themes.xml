@@ -27,7 +27,7 @@
         <item name="android:windowLightNavigationBar">false</item>
     </style>
 
-    <style name="BottomSheetDialogTheme" parent="Theme.Design.BottomSheetDialog">
+    <style name="BottomSheetDialogTheme" parent="Theme.Material3.DayNight.BottomSheetDialog">
         <item name="bottomSheetStyle">@style/BottomSheetModalStyle</item>
     </style>
 
