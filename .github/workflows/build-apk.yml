@@ -2,7 +2,7 @@ name: Build CookieBox APK
 
 on:
   push:
-    branches: [ "main", "master" ]
+    branches: [ "main", "master", "ui-1.6" ]
   pull_request:
     branches: [ "main", "master" ]
   workflow_dispatch:

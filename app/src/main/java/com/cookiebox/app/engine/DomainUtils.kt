@@ -61,6 +61,7 @@ object DomainUtils {
                     "zhihu.com" -> "https://www.zhihu.com"
                     "github.com" -> "https://github.com"
                     "v2ex.com" -> "https://www.v2ex.com"
+                    "hark.com" -> "https://hark.com/chat"
                     else -> if (root.isNotEmpty()) "https://$root" else "https://$domain"
                 }
             }

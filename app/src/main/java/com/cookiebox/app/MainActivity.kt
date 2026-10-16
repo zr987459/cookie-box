@@ -42,6 +42,8 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.webkit.ProfileStore
+import androidx.webkit.UserAgentMetadata
+import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import com.cookiebox.app.databinding.ActivityMainBinding
@@ -103,30 +105,15 @@ class MainActivity : AppCompatActivity() {
                 .replace("Version/4.0 ", "")
         }
 
-        /** 解除网站对双指缩放的封锁：改写 viewport，并持续监听 SPA 动态改回的情况 */
+        /** 解除网站对双指缩放的封锁：仅改写 viewport 属性，绝不污染 window 变量或插入多余节点，防止触发反爬虫检测 */
         private val UNLOCK_ZOOM_JS = """
             (function() {
-                function fix() {
-                    var metas = document.querySelectorAll('meta[name="viewport"]');
-                    metas.forEach(function(meta) {
-                        var c = meta.getAttribute('content') || '';
-                        var n = c.replace(/user-scalable\s*=\s*(no|0)/gi, 'user-scalable=yes')
-                                 .replace(/maximum-scale\s*=\s*[0-9.]+/gi, 'maximum-scale=10');
-                        if (!/user-scalable/i.test(n)) n += ', user-scalable=yes';
-                        if (!/maximum-scale/i.test(n)) n += ', maximum-scale=10';
-                        if (n !== c) meta.setAttribute('content', n);
-                    });
-                }
-                fix();
-                if (!window.__cbZoomStyle && document.head) {
-                    window.__cbZoomStyle = true;
-                    var st = document.createElement('style');
-                    st.textContent = 'html,body{touch-action:manipulation !important;}';
-                    document.head.appendChild(st);
-                }
-                if (!window.__cbZoomObs && document.head && window.MutationObserver) {
-                    window.__cbZoomObs = new MutationObserver(fix);
-                    window.__cbZoomObs.observe(document.head, {subtree: true, childList: true, attributes: true, attributeFilter: ['content']});
+                var metas = document.querySelectorAll('meta[name="viewport"]');
+                for (var i = 0; i < metas.length; i++) {
+                    var c = metas[i].getAttribute('content') || '';
+                    if (/user-scalable\s*=\s*(no|0)/i.test(c)) {
+                        metas[i].setAttribute('content', c.replace(/user-scalable\s*=\s*(no|0)/gi, 'user-scalable=yes').replace(/maximum-scale\s*=\s*[0-9.]+/gi, 'maximum-scale=5.0'));
+                    }
                 }
             })();
         """.trimIndent()
@@ -240,6 +227,7 @@ class MainActivity : AppCompatActivity() {
             defaultMobileUa = cleanUserAgent(settings.userAgentString)
         }
         settings.userAgentString = if (desktop) DESKTOP_UA else defaultMobileUa
+        applyBrowserIdentity(settings, desktop)
 
         settings.javaScriptEnabled = true
         settings.domStorageEnabled = true
@@ -296,7 +284,6 @@ class MainActivity : AppCompatActivity() {
                         binding.progressBar.visibility = View.GONE
                     }
                 }
-                if (newProgress >= 30) unlockZoom(view)
             }
 
             override fun onCreateWindow(
@@ -404,7 +391,6 @@ class MainActivity : AppCompatActivity() {
             }
 
             override fun onPageCommitVisible(view: WebView?, url: String?) {
-                unlockZoom(view)
             }
 
             override fun onPageFinished(view: WebView?, url: String?) {
@@ -457,12 +443,57 @@ class MainActivity : AppCompatActivity() {
         return newTab
     }
 
-    /** 登录页（Google 等）对页面被改动很敏感，不注入任何脚本 */
+    /**
+     * 还原真实无指纹 Chrome 浏览器身份：
+     * 1. 彻底拦截并移除 WebView 默认带的 X-Requested-With 头（防止 Cloudflare / Hark 识别出应用包名）
+     * 2. 规范化 Client Hints（Sec-CH-UA / navigator.userAgentData），与官方独立 Chrome 完全一致
+     */
+    private fun applyBrowserIdentity(settings: WebSettings, desktop: Boolean) {
+        try {
+            if (WebViewFeature.isFeatureSupported(WebViewFeature.REQUESTED_WITH_HEADER_ALLOW_LIST)) {
+                WebSettingsCompat.setRequestedWithHeaderOriginAllowList(settings, emptySet())
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        try {
+            if (WebViewFeature.isFeatureSupported(WebViewFeature.USER_AGENT_METADATA)) {
+                val ua = settings.userAgentString
+                val m = Regex("Chrome/(\\d+)([\\d.]*)").find(ua)
+                val major = m?.groupValues?.get(1) ?: "124"
+                val full = m?.let { it.groupValues[1] + it.groupValues[2] } ?: "$major.0.0.0"
+                val brands = listOf(
+                    UserAgentMetadata.BrandVersion.Builder().setBrand("Chromium").setMajorVersion(major).setFullVersion(full).build(),
+                    UserAgentMetadata.BrandVersion.Builder().setBrand("Google Chrome").setMajorVersion(major).setFullVersion(full).build(),
+                    UserAgentMetadata.BrandVersion.Builder().setBrand("Not_A Brand").setMajorVersion("24").setFullVersion("24.0.0.0").build()
+                )
+                val builder = UserAgentMetadata.Builder()
+                    .setBrandVersionList(brands)
+                    .setFullVersion(full)
+                    .setMobile(!desktop)
+                if (desktop) {
+                    builder.setPlatform("Windows").setPlatformVersion("10.0.0").setModel("").setArchitecture("x86").setBitness(64)
+                } else {
+                    builder.setPlatform("Android").setPlatformVersion(Build.VERSION.RELEASE ?: "14").setModel(Build.MODEL ?: "")
+                }
+                WebSettingsCompat.setUserAgentMetadata(settings, builder.build())
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    /** 登录页（Google、Hark 等）对页面被改动极度敏感，绝对不注入任何脚本 */
     private fun isSensitiveLoginPage(url: String?): Boolean {
-        val host = url?.let { Uri.parse(it).host }?.lowercase() ?: return false
+        if (url.isNullOrBlank()) return false
+        val uri = try { Uri.parse(url) } catch (e: Exception) { return false }
+        val host = uri.host?.lowercase() ?: return false
+        val path = uri.path?.lowercase() ?: ""
         return host.startsWith("accounts.") || host.startsWith("login.") || host.startsWith("signin.") ||
                 host.startsWith("passport.") || host.startsWith("auth.") || host.startsWith("sso.") ||
-                host.endsWith("accounts.google.com") || host.endsWith("accounts.youtube.com")
+                host.endsWith("accounts.google.com") || host.endsWith("accounts.youtube.com") ||
+                path.contains("login") || path.contains("signin") || path.contains("auth") || path.contains("signup") ||
+                host == "hark.com"
     }
 
     private fun unlockZoom(view: WebView?) {
@@ -680,7 +711,7 @@ class MainActivity : AppCompatActivity() {
         targetTab.webView?.let { cookieManager.setAcceptThirdPartyCookies(it, true) }
 
         val isHttps = cleanEntryUrl.startsWith("https://")
-        val domainUrl = if (rootDomain.isNotEmpty()) "https://$rootDomain" else cleanEntryUrl
+        val isStrictSubdomain = record.domain.startsWith("accounts.google.") || record.domain.startsWith("login.")
 
         var pendingCount: Int
         val writeList = mutableListOf<Pair<String, String>>()
@@ -691,19 +722,17 @@ class MainActivity : AppCompatActivity() {
                     item.name.startsWith("__Host-") ||
                     item.isSecure
 
-            val secureAttr = if (isSecureCookie) "; Secure" else ""
+            val secureAttr = if (isSecureCookie) "; Secure; SameSite=Lax" else ""
 
-            if (item.name.startsWith("__Host-")) {
-                // RFC 6265bis：__Host- 前缀绝不能带 Domain，必须 Path=/ 且 Secure，只能按主机写
+            if (item.name.startsWith("__Host-") || isStrictSubdomain) {
+                // RFC 6265bis：__Host- 必须是 host-only，不能带 Domain 属性，只按当前主机写一份
                 writeList.add(Pair(cleanEntryUrl, "${item.name}=${item.value}; Path=/; Secure"))
+            } else if (rootDomain.isNotEmpty()) {
+                // 如果有根域名（如 hark.com / bilibili.com），只写一份带 Domain=.rootDomain 的 Cookie！
+                // 这样当前域名、所有子域、所有 API 都会自动带上该 Cookie，并且绝对不会出现重复重名的冲突！
+                writeList.add(Pair("https://$rootDomain", "${item.name}=${item.value}; Domain=.$rootDomain; Path=/$secureAttr"))
             } else {
-                // 1) 按当前主机写一份
                 writeList.add(Pair(cleanEntryUrl, "${item.name}=${item.value}; Path=/$secureAttr"))
-                // 2) 按根域名写一份，保证所有子域和 API 都能带上（谷歌的 SID / __Secure-1PSID 等会话 Cookie
-                //    必须落在 .google.com 上，否则会提示“Cookie 设置存在问题”而登录失败）
-                if (rootDomain.isNotEmpty()) {
-                    writeList.add(Pair(domainUrl, "${item.name}=${item.value}; Domain=.$rootDomain; Path=/$secureAttr"))
-                }
             }
         }
 
@@ -747,9 +776,11 @@ class MainActivity : AppCompatActivity() {
 
         if (tab.isDesktop) {
             settings.userAgentString = DESKTOP_UA
+            applyBrowserIdentity(settings, true)
             toast(getString(R.string.current_ua_desktop))
         } else {
             settings.userAgentString = defaultMobileUa
+            applyBrowserIdentity(settings, false)
             toast(getString(R.string.current_ua_mobile))
         }
 
