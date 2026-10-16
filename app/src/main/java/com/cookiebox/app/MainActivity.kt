@@ -2,7 +2,6 @@ package com.cookiebox.app
 
 import android.Manifest
 import android.annotation.SuppressLint
-import android.app.DownloadManager
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
@@ -49,6 +48,7 @@ import androidx.webkit.WebViewFeature
 import com.cookiebox.app.databinding.ActivityMainBinding
 import com.cookiebox.app.engine.BrowserPrefs
 import com.cookiebox.app.engine.DomainUtils
+import com.cookiebox.app.engine.FileDownloader
 import com.cookiebox.app.engine.WebTranslator
 import com.cookiebox.app.model.SavedCookieRecord
 import com.cookiebox.app.model.TabItem
@@ -57,6 +57,10 @@ import com.cookiebox.app.ui.StorageBottomSheetDialog
 import com.cookiebox.app.ui.TabsBottomSheetDialog
 import com.cookiebox.app.ui.WebToolsBottomSheetDialog
 import com.google.android.material.chip.Chip
+import com.google.android.material.snackbar.Snackbar
+import android.util.Base64
+import android.webkit.JavascriptInterface
+import org.json.JSONObject
 import java.util.UUID
 
 class MainActivity : AppCompatActivity() {
@@ -93,6 +97,13 @@ class MainActivity : AppCompatActivity() {
         }
 
     private var lastBackPressAt = 0L
+
+    // 应用内下载器（不依赖系统下载管理器）
+    private val downloader by lazy { FileDownloader(this) }
+    // blob: 下载请求的一次性令牌，防止网页自己调用桥接接口乱存文件
+    private val blobTokens = mutableMapOf<String, String>()
+    private val notificationPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
     companion object {
         private const val DESKTOP_UA =
@@ -444,6 +455,7 @@ class MainActivity : AppCompatActivity() {
         webView.setDownloadListener { url, userAgent, contentDisposition, mimeType, _ ->
             startDownload(newTab, url, userAgent, contentDisposition, mimeType)
         }
+        webView.addJavascriptInterface(BlobBridge(), "CookieBoxDl")
 
         // 长按链接 / 图片
         webView.setOnLongClickListener { showLongPressMenu(newTab) }
@@ -1056,30 +1068,38 @@ class MainActivity : AppCompatActivity() {
     // ---------- 下载 ----------
 
     private fun startDownload(tab: TabItem, url: String, userAgent: String?, contentDisposition: String?, mimeType: String?) {
-        if (!url.startsWith("http://") && !url.startsWith("https://")) {
-            toast("该文件由网页脚本生成，暂不支持下载")
-            return
-        }
-        val action = {
-            try {
-                val fileName = URLUtil.guessFileName(url, contentDisposition, mimeType)
-                val request = DownloadManager.Request(Uri.parse(url)).apply {
-                    val cookies = (tab.customCookieManager ?: CookieManager.getInstance()).getCookie(url)
-                    if (!cookies.isNullOrBlank()) addRequestHeader("Cookie", cookies)
-                    addRequestHeader("User-Agent", userAgent ?: defaultMobileUa)
-                    tab.webView?.url?.let { addRequestHeader("Referer", it) }
-                    if (!mimeType.isNullOrBlank()) setMimeType(mimeType)
-                    setTitle(fileName)
-                    setDescription(Uri.parse(url).host)
-                    setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                    setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
+        when {
+            url.startsWith("blob:") -> downloadBlob(tab, url, contentDisposition, mimeType)
+            url.startsWith("data:") -> saveDataUrl(url, contentDisposition, mimeType)
+            url.startsWith("http://") || url.startsWith("https://") -> {
+                val cm = tab.customCookieManager ?: CookieManager.getInstance()
+                cm.flush()
+                val ua = userAgent?.takeIf { it.isNotBlank() } ?: tab.webView?.settings?.userAgentString ?: defaultMobileUa
+                val referer = tab.webView?.url
+                withStoragePermission {
+                    askNotificationPermissionOnce()
+                    toast("开始下载…")
+                    downloader.download(url, ua, referer, cm, contentDisposition, mimeType) { result, error ->
+                        onDownloadFinished(result, error)
+                    }
                 }
-                (getSystemService(DOWNLOAD_SERVICE) as DownloadManager).enqueue(request)
-                toast("开始下载：$fileName")
-            } catch (e: Exception) {
-                toast("下载失败：${e.message}")
             }
+            else -> toast("不支持下载这种链接")
         }
+        closeBlankDownloadTab(tab)
+    }
+
+    /** 网页用 target=_blank 打开下载链接时会留下一个空白标签，下载开始后自动关掉它 */
+    private fun closeBlankDownloadTab(tab: TabItem) {
+        if (tab.openerId == null || tabs.size <= 1) return
+        val current = tab.webView?.url
+        if (tab.webView?.canGoBack() == true) return
+        if (current.isNullOrBlank() || current == "about:blank") {
+            binding.root.post { if (tabs.any { it.id == tab.id }) closeTab(tab.id) }
+        }
+    }
+
+    private fun withStoragePermission(action: () -> Unit) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q &&
             ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED
         ) {
@@ -1087,6 +1107,103 @@ class MainActivity : AppCompatActivity() {
             storagePermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
         } else {
             action()
+        }
+    }
+
+    private fun askNotificationPermissionOnce() {
+        if (Build.VERSION.SDK_INT < 33) return
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) return
+        val sp = getSharedPreferences("cookiebox_download", MODE_PRIVATE)
+        if (sp.getBoolean("asked_notify", false)) return
+        sp.edit().putBoolean("asked_notify", true).apply()
+        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+    }
+
+    private fun onDownloadFinished(result: FileDownloader.Result?, error: String?) {
+        if (isFinishing || isDestroyed) return
+        if (result == null) {
+            toast("下载失败：${error ?: "未知错误"}")
+            return
+        }
+        Snackbar.make(binding.root, "已保存到「下载」：${result.fileName}", Snackbar.LENGTH_LONG)
+            .setAction("打开") { openDownloaded(result) }
+            .show()
+    }
+
+    private fun openDownloaded(result: FileDownloader.Result) {
+        try {
+            startActivity(downloader.openIntent(result))
+        } catch (e: Exception) {
+            toast("没有可以打开该文件的应用")
+        }
+    }
+
+    private fun saveDataUrl(url: String, contentDisposition: String?, mimeType: String?) {
+        try {
+            val comma = url.indexOf(',')
+            if (comma < 0) throw IllegalArgumentException("格式错误")
+            val meta = url.substring(5, comma)
+            val payload = url.substring(comma + 1)
+            val isBase64 = meta.endsWith(";base64", ignoreCase = true)
+            val mime = meta.substringBefore(';').ifBlank { mimeType ?: "application/octet-stream" }
+            val bytes = if (isBase64) Base64.decode(payload, Base64.DEFAULT)
+            else Uri.decode(payload).toByteArray(Charsets.UTF_8)
+            val name = URLUtil.guessFileName(null, contentDisposition, mime)
+            withStoragePermission {
+                downloader.saveBytes(bytes, name, mime) { result, error -> onDownloadFinished(result, error) }
+            }
+        } catch (e: Exception) {
+            toast("下载失败：${e.message}")
+        }
+    }
+
+    /** blob: 地址只能在网页里读取：注入脚本把数据转成 base64 交回来保存 */
+    private fun downloadBlob(tab: TabItem, url: String, contentDisposition: String?, mimeType: String?) {
+        val wv = tab.webView ?: return
+        val token = UUID.randomUUID().toString()
+        val name = URLUtil.guessFileName(null, contentDisposition, mimeType)
+        blobTokens[token] = name
+        val js = """
+            (function () {
+                var t = ${JSONObject.quote(token)};
+                fetch(${JSONObject.quote(url)}).then(function (r) { return r.blob(); }).then(function (b) {
+                    var fr = new FileReader();
+                    fr.onloadend = function () { CookieBoxDl.onBlob(t, String(fr.result), b.type || ''); };
+                    fr.readAsDataURL(b);
+                }).catch(function (e) { CookieBoxDl.onBlobError(t, String(e)); });
+            })();
+        """.trimIndent()
+        toast("正在保存网页生成的文件…")
+        wv.evaluateJavascript(js, null)
+    }
+
+    private inner class BlobBridge {
+        @JavascriptInterface
+        fun onBlob(token: String, dataUrl: String, mime: String) {
+            runOnUiThread {
+                val name = blobTokens.remove(token) ?: return@runOnUiThread
+                try {
+                    val comma = dataUrl.indexOf(',')
+                    val bytes = Base64.decode(dataUrl.substring(comma + 1), Base64.DEFAULT)
+                    val realMime = mime.ifBlank { "application/octet-stream" }
+                    val finalName = if (name.endsWith(".bin") && realMime != "application/octet-stream") {
+                        val ext = android.webkit.MimeTypeMap.getSingleton().getExtensionFromMimeType(realMime)
+                        if (ext != null) name.removeSuffix(".bin") + "." + ext else name
+                    } else name
+                    withStoragePermission {
+                        downloader.saveBytes(bytes, finalName, realMime) { result, error -> onDownloadFinished(result, error) }
+                    }
+                } catch (e: Exception) {
+                    toast("下载失败：${e.message}")
+                }
+            }
+        }
+
+        @JavascriptInterface
+        fun onBlobError(token: String, error: String) {
+            runOnUiThread {
+                if (blobTokens.remove(token) != null) toast("下载失败：网页文件已失效（$error）")
+            }
         }
     }
 
