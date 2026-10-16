@@ -217,6 +217,11 @@ class CookieBottomSheetDialog : BottomSheetDialogFragment() {
         return try {
             val clipboard = requireActivity().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
             val clip = ClipData.newPlainText(label, text)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                clip.description.extras = android.os.PersistableBundle().apply {
+                    putBoolean(android.content.ClipDescription.EXTRA_IS_SENSITIVE, true)
+                }
+            }
             clipboard.setPrimaryClip(clip)
             true
         } catch (e: Exception) {

@@ -270,7 +270,10 @@ class AccountVault(context: Context) {
 
     private fun key(): SecretKey {
         val ks = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
-        (ks.getEntry(KEY_ALIAS, null) as? KeyStore.SecretKeyEntry)?.let { return it.secretKey }
+        if (ks.containsAlias(KEY_ALIAS)) {
+            return (ks.getKey(KEY_ALIAS, null) as? SecretKey)
+                ?: throw IllegalStateException("KeyStore contains alias $KEY_ALIAS but key is missing/invalid")
+        }
         val gen = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
         gen.init(
             KeyGenParameterSpec.Builder(KEY_ALIAS, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)

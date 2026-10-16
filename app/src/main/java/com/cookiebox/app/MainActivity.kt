@@ -443,6 +443,10 @@ class MainActivity : AppCompatActivity() {
                 unlockZoom(view)
                 if (newTab.isDesktop) applyDesktopViewport(view)
                 checkLoginForm(newTab)
+                // 隐私保护与环境指纹对齐：抹除常见自动化指纹
+                if (!isSensitiveLoginPage(url)) {
+                    view?.evaluateJavascript("try { Object.defineProperty(navigator, 'webdriver', { get: () => undefined, configurable: true }); } catch (e) {}", null)
+                }
                 if (newTab.id == activeTabId) updateNavButtons()
             }
 
@@ -468,7 +472,7 @@ class MainActivity : AppCompatActivity() {
         webView.setDownloadListener { url, userAgent, contentDisposition, mimeType, _ ->
             startDownload(newTab, url, userAgent, contentDisposition, mimeType)
         }
-        webView.addJavascriptInterface(BlobBridge(), "CookieBoxDl")
+        // 安全加固 (T-015)：不再对全量网页全局暴露 CookieBoxDl，仅在 blob 下载时单次动态挂载
 
         // 长按链接 / 图片
         webView.setOnLongClickListener { showLongPressMenu(newTab) }
@@ -1174,12 +1178,16 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** blob: 地址只能在网页里读取：注入脚本把数据转成 base64 交回来保存 */
+    /** blob: 地址只能在网页里读取：动态注册桥 -> 读取数据 -> 立即注销桥，杜绝全局暴露 (T-015) */
     private fun downloadBlob(tab: TabItem, url: String, contentDisposition: String?, mimeType: String?) {
         val wv = tab.webView ?: return
         val token = UUID.randomUUID().toString()
         val name = URLUtil.guessFileName(null, contentDisposition, mimeType)
         blobTokens[token] = name
+
+        // 单次动态挂载 JS 桥
+        wv.addJavascriptInterface(BlobBridge(wv), "CookieBoxDl")
+
         val js = """
             (function () {
                 var t = ${JSONObject.quote(token)};
@@ -1192,12 +1200,18 @@ class MainActivity : AppCompatActivity() {
         """.trimIndent()
         toast("正在保存网页生成的文件…")
         wv.evaluateJavascript(js, null)
+
+        // 15 秒安全超时兜底注销
+        wv.postDelayed({
+            try { wv.removeJavascriptInterface("CookieBoxDl") } catch (_: Exception) {}
+        }, 15000)
     }
 
-    private inner class BlobBridge {
+    private inner class BlobBridge(private val wv: WebView) {
         @JavascriptInterface
         fun onBlob(token: String, dataUrl: String, mime: String) {
             runOnUiThread {
+                try { wv.removeJavascriptInterface("CookieBoxDl") } catch (_: Exception) {}
                 val name = blobTokens.remove(token) ?: return@runOnUiThread
                 try {
                     val comma = dataUrl.indexOf(',')
@@ -1219,6 +1233,7 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun onBlobError(token: String, error: String) {
             runOnUiThread {
+                try { wv.removeJavascriptInterface("CookieBoxDl") } catch (_: Exception) {}
                 if (blobTokens.remove(token) != null) toast("下载失败：网页文件已失效（$error）")
             }
         }
@@ -1570,9 +1585,15 @@ class MainActivity : AppCompatActivity() {
 
     // ---------- 工具 ----------
 
-    private fun copyText(text: String, tip: String) {
+    private fun copyText(text: String, tip: String, isSensitive: Boolean = true) {
         val cm = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
-        cm.setPrimaryClip(ClipData.newPlainText("CookieBox", text))
+        val clip = ClipData.newPlainText("CookieBox", text)
+        if (isSensitive && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            clip.description.extras = android.os.PersistableBundle().apply {
+                putBoolean(android.content.ClipDescription.EXTRA_IS_SENSITIVE, true)
+            }
+        }
+        cm.setPrimaryClip(clip)
         toast(tip)
     }
 
