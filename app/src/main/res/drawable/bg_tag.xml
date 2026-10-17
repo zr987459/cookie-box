@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 小角标（当前 / 多开分身 / 健康度 / 计数）：无描边实心胶囊，比原来复用搜索框更干净 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <corners android:radius="6dp" />
+    <solid android:color="@color/cb_tag_bg" />
+</shape>

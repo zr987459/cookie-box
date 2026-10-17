@@ -1,10 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- T-019 新增的界面色（浅色模式）。深色值见 values-night/colors_ui.xml -->
+<!-- 界面层色（浅色）。地址栏 / 底栏 / 卡片 / 弹窗统一由这几级 surface 构成 -->
 <resources>
-    <color name="cb_floating_surface">#FFFFFF</color>
-    <color name="cb_hairline">#E7DCCF</color>
-    <color name="cb_lock_chip">#F5ECE2</color>
-    <color name="cb_icon">#4F4539</color>
-    <color name="cb_shadow">#40211A15</color>
+    <color name="cb_floating_surface">#FFFFFF</color>       <!-- 两颗浮动药丸 -->
+    <color name="cb_sheet_surface">#FFFFFF</color>          <!-- 底部弹窗 -->
+    <color name="cb_tag_bg">#E8ECF4</color>                 <!-- 小角标底 -->
+    <color name="cb_hairline">#D3D8E3</color>
+    <color name="cb_lock_chip">#E8ECF4</color>
+    <color name="cb_icon">#1E2636</color>                   <!-- 12.7:1 -->
+    <color name="cb_shadow">#331A2340</color>
     <color name="cb_ripple_on_primary">#33FFFFFF</color>
+    <color name="cb_scrim">#99070A12</color>
 </resources>

@@ -34,7 +34,7 @@
                 android:paddingVertical="2dp"
                 android:text="核心凭据"
                 android:textColor="@color/primary"
-                android:textSize="10sp"
+                android:textSize="11sp"
                 android:textStyle="bold" />
 
             <TextView
@@ -120,7 +120,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:textColor="@color/on_surface_variant"
-                android:textSize="10sp"
+                android:textSize="11sp"
                 tools:text="域名: .bilibili.com" />
 
             <View
@@ -133,7 +133,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:textColor="@color/on_surface_variant"
-                android:textSize="10sp"
+                android:textSize="11sp"
                 tools:text="长度: 32" />
         </LinearLayout>
 

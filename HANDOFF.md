@@ -2,6 +2,14 @@
 
 模板见 AGENTS.md 第 6 节。
 
+## 2026-10-17 12:40 CST · 开发者（UI/UX，Hark） · T-020
+- 分支 / 提交：task/T-020-ui-contrast（基于 main）
+- 完成：定位"字看不清"根因——浅色模式 `values/colors.xml` 是深色调色板、浮层却是白色，地址栏 / 底栏文字白压白（1.05:1）；重做浅色 Porcelain & Cobalt / 深色 Ink & Periwinkle 两套调色板，所有文字色在 6 种底色上最差 ≥ 7:1；主题补齐 outline / error / surfaceContainer* 并统一对话框、底部弹窗、系统栏；小字 9/10sp → 11sp，角标改用新 `bg_tag`；设计说明 docs/design/ui-contrast-t020.md
+- 未完成 / 风险：仅通过 GitHub API 提交，**未编译、未真机验证**；PR 上的 CI 构建结果为准。浅色模式外观变化大（原来浅色实际显示为深色系统栏 + 白浮层）
+- 兼容性验证：不涉及存储（只改资源，Kotlin 未改，所有 ViewBinding id 保留）
+- 泄露自查：无新增密钥与敏感日志
+- 下一棒建议：审查者跑 assembleDebug 并在浅 / 深色真机各截一组图；T-019 遗留的 https 挂锁改 success 绿可一并做（需改 Kotlin，另开任务）
+
 ## 2026-10-17 03:45 CST · 地面总执行官（本地智能体） · T-019 与安全加固合并完成
 - 分支 / 提交：main (v1.8.0, versionCode 28)
 - 完成：

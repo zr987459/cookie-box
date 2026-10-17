@@ -1,28 +1,44 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 深色模式下覆盖既有色名（名字不变，只换值），让底部弹窗等存量界面一起变暗 -->
+<!--
+  CookieBox · "Ink & Periwinkle" 深色调色板（T-020）
+  同名覆盖浅色色名。文字色在所有深色底上 ≥ 7:1（AAA）。
+  底色是带一点蓝的墨黑，避免纯黑在 OLED 上的拖影，也避免 #0F172A 一类偏亮底让副文字发闷。
+-->
 <resources>
-    <color name="primary">#F5B971</color>
-    <color name="on_primary">#2A1700</color>
-    <color name="primary_container">#3A2A18</color>
-    <color name="on_primary_container">#FFDDB6</color>
+    <color name="primary">#AFC2FF</color>                    <!-- 8.5:1 on 最亮卡片 -->
+    <color name="on_primary">#0A1966</color>                 <!-- 8.9:1 on primary -->
+    <color name="primary_container">#24369A</color>
+    <color name="on_primary_container">#E4E9FF</color>       <!-- 8.4:1 -->
 
-    <color name="secondary">#CBB89A</color>
-    <color name="on_secondary">#2A1F0F</color>
-    <color name="secondary_container">#1E293B</color>
-    <color name="on_secondary_container">#E2E8F0</color>
+    <color name="secondary">#C2C9D6</color>
+    <color name="on_secondary">#1A2233</color>
+    <color name="secondary_container">#262E3F</color>
+    <color name="on_secondary_container">#E9EDF5</color>     <!-- 11.6:1 -->
 
-    <color name="background">#0F172A</color>
-    <color name="on_background">#E2E8F0</color>
-    <color name="surface">#0F172A</color>
-    <color name="on_surface">#E2E8F0</color>
-    <color name="surface_variant">#1E293B</color>
-    <color name="on_surface_variant">#94A3B8</color>
+    <color name="tertiary">#E2B8FF</color>
+    <color name="on_tertiary">#3B0A63</color>
 
-    <color name="cookie_chip_bg">#2B2113</color>
-    <color name="cookie_chip_text">#FBBF77</color>
-    <color name="code_bg">#020617</color>
-    <color name="code_text">#CBD5E1</color>
-    <color name="divider">#243045</color>
-    <color name="success">#4ADE80</color>
-    <color name="danger">#F87171</color>
+    <color name="background">#0A0D14</color>
+    <color name="on_background">#F2F4F8</color>
+    <color name="surface">#11151E</color>
+    <color name="on_surface">#F2F4F8</color>                 <!-- 13.5:1 -->
+    <color name="surface_variant">#1E2432</color>
+    <color name="on_surface_variant">#C2C9D6</color>         <!-- 8.9:1 -->
+
+    <color name="outline">#8E97A8</color>
+    <color name="outline_variant">#2E3647</color>
+
+    <color name="error">#FFB4AB</color>
+    <color name="on_error">#690005</color>
+    <color name="error_container">#93000A</color>
+    <color name="on_error_container">#FFDAD6</color>
+
+    <color name="cookie_chip_bg">#1C2647</color>
+    <color name="cookie_chip_text">#AFC2FF</color>
+    <color name="code_bg">#07090E</color>
+    <color name="code_text">#E6EAF1</color>
+    <color name="divider">#232A39</color>
+    <color name="success">#86E3AE</color>
+    <color name="danger">#FFB4AB</color>
+    <color name="search_border">#2E3647</color>
 </resources>

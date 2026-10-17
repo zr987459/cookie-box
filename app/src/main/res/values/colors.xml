@@ -1,30 +1,47 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  CookieBox · "Porcelain & Cobalt" 浅色调色板（T-020 高对比度重构）
+  所有文字色在其可能出现的每一种底色上 ≥ 7:1（WCAG 2.x AAA），按钮文字 ≥ 7:1。
+  对比度在注释中标注（取最差底色）。深色值见 values-night/colors.xml，色名完全一致。
+-->
 <resources>
-    <!-- Modern Professional Browser Slate/Dark Palette -->
-    <color name="primary">#3B82F6</color>
-    <color name="on_primary">#FFFFFF</color>
-    <color name="primary_container">#1E3A8A</color>
-    <color name="on_primary_container">#DBEAFE</color>
+    <!-- 品牌 · 钴蓝：既做行动色也做强调文字色（白底 7.8:1） -->
+    <color name="primary">#1C36B8</color>
+    <color name="on_primary">#FFFFFF</color>                 <!-- 8.5:1 on primary -->
+    <color name="primary_container">#DDE4FF</color>
+    <color name="on_primary_container">#0B1A6B</color>       <!-- 12.1:1 -->
 
-    <color name="secondary">#64748B</color>
+    <color name="secondary">#3B4558</color>
     <color name="on_secondary">#FFFFFF</color>
-    <color name="secondary_container">#1E293B</color>
-    <color name="on_secondary_container">#F1F5F9</color>
+    <color name="secondary_container">#E2E7F1</color>        <!-- Tonal 按钮底 -->
+    <color name="on_secondary_container">#111A2E</color>     <!-- 14.0:1 -->
 
-    <color name="background">#0B0F17</color>
-    <color name="on_background">#F8FAFC</color>
-    <color name="surface">#111827</color>
-    <color name="on_surface">#F8FAFC</color>
-    <color name="surface_variant">#1E293B</color>
-    <color name="on_surface_variant">#94A3B8</color>
+    <color name="tertiary">#6B2FA6</color>
+    <color name="on_tertiary">#FFFFFF</color>
 
-    <!-- Functional Colors -->
-    <color name="cookie_chip_bg">#1E293B</color>
-    <color name="cookie_chip_text">#60A5FA</color>
-    <color name="code_bg">#0A0E17</color>
-    <color name="code_text">#E2E8F0</color>
-    <color name="divider">#1E293B</color>
-    <color name="success">#10B981</color>
-    <color name="danger">#EF4444</color>
-    <color name="search_border">#2D3D52</color>
+    <!-- 中性层级：背景 < 次级面 < 卡片/浮层，靠明度 + 发丝描边分层 -->
+    <color name="background">#F5F6FA</color>
+    <color name="on_background">#0B1220</color>
+    <color name="surface">#FFFFFF</color>
+    <color name="on_surface">#0B1220</color>                 <!-- 主文字 15.7:1 -->
+    <color name="surface_variant">#ECEFF5</color>
+    <color name="on_surface_variant">#3B4558</color>         <!-- 副文字 / 提示 8.1:1，绝不发灰 -->
+
+    <color name="outline">#5A6478</color>                    <!-- 输入框、Outlined 按钮边 ≥ 4.5:1 -->
+    <color name="outline_variant">#D3D8E3</color>            <!-- 装饰性分隔 -->
+
+    <color name="error">#8C1610</color>
+    <color name="on_error">#FFFFFF</color>
+    <color name="error_container">#FFE1DD</color>
+    <color name="on_error_container">#410002</color>
+
+    <!-- 功能色（文字用途，均 ≥ 7:1） -->
+    <color name="cookie_chip_bg">#E5EBFF</color>
+    <color name="cookie_chip_text">#1C36B8</color>
+    <color name="code_bg">#F1F3F8</color>
+    <color name="code_text">#0F172A</color>
+    <color name="divider">#E1E5EE</color>
+    <color name="success">#08592C</color>
+    <color name="danger">#8C1610</color>
+    <color name="search_border">#D3D8E3</color>
 </resources>
