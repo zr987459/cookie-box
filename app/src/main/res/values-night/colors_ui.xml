@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 深色模式：Slate 极简黑。底色 #0F172A，浮层 #151E31，发丝边 #243045 -->
+<!-- 深色：浮层比底色亮两级（#181D28），配 1dp 发丝边勾勒轮廓 -->
 <resources>
-    <color name="cb_floating_surface">#151E31</color>
-    <color name="cb_hairline">#243045</color>
-    <color name="cb_lock_chip">#1E293B</color>
-    <color name="cb_icon">#CBD5E1</color>
+    <color name="cb_floating_surface">#181D28</color>
+    <color name="cb_hairline">#2A3141</color>
+    <color name="cb_lock_chip">#262C3A</color>
+    <color name="cb_icon">#DDE2EC</color>
     <color name="cb_shadow">#99000000</color>
-    <color name="cb_ripple_on_primary">#33000000</color>
+    <color name="cb_ripple_on_primary">#290A1E52</color>
 </resources>

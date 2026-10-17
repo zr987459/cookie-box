@@ -1,28 +1,31 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 深色模式下覆盖既有色名（名字不变，只换值），让底部弹窗等存量界面一起变暗 -->
+<!-- CookieBox 1.9 · 「Midnight」深色调色板。色名与 values/colors.xml 一一对应，所有文字 ≥ 7:1 -->
 <resources>
-    <color name="primary">#F5B971</color>
-    <color name="on_primary">#2A1700</color>
-    <color name="primary_container">#3A2A18</color>
-    <color name="on_primary_container">#FFDDB6</color>
+    <!-- 品牌：冰川蓝（同色相提亮），深底上 ≥ 8:1；按钮底配深靛字 9:1 -->
+    <color name="primary">#A9C2FF</color>
+    <color name="on_primary">#0A1E52</color>
+    <color name="primary_container">#24356B</color>
+    <color name="on_primary_container">#DCE3FF</color>
 
-    <color name="secondary">#CBB89A</color>
-    <color name="on_secondary">#2A1F0F</color>
-    <color name="secondary_container">#1E293B</color>
-    <color name="on_secondary_container">#E2E8F0</color>
+    <color name="secondary">#C2C9DB</color>
+    <color name="on_secondary">#1A2236</color>
+    <color name="secondary_container">#262C3A</color>
+    <color name="on_secondary_container">#E3E7F2</color>
 
-    <color name="background">#0F172A</color>
-    <color name="on_background">#E2E8F0</color>
-    <color name="surface">#0F172A</color>
-    <color name="on_surface">#E2E8F0</color>
-    <color name="surface_variant">#1E293B</color>
-    <color name="on_surface_variant">#94A3B8</color>
+    <!-- 面：近黑带一点蓝，比纯黑柔和；浮层逐级提亮 -->
+    <color name="background">#0B0E14</color>
+    <color name="on_background">#F3F5F9</color>
+    <color name="surface">#12161F</color>
+    <color name="on_surface">#F3F5F9</color>
+    <color name="surface_variant">#1F2533</color>
+    <color name="on_surface_variant">#C4CBD8</color>
 
-    <color name="cookie_chip_bg">#2B2113</color>
-    <color name="cookie_chip_text">#FBBF77</color>
-    <color name="code_bg">#020617</color>
-    <color name="code_text">#CBD5E1</color>
-    <color name="divider">#243045</color>
-    <color name="success">#4ADE80</color>
-    <color name="danger">#F87171</color>
+    <color name="cookie_chip_bg">#24356B</color>
+    <color name="cookie_chip_text">#DCE3FF</color>
+    <color name="code_bg">#0B0E14</color>
+    <color name="code_text">#E3E7F2</color>
+    <color name="divider">#232937</color>
+    <color name="success">#7FDBA2</color>
+    <color name="danger">#FFB4AB</color>
+    <color name="search_border">#333B4D</color>
 </resources>

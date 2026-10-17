@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- T-019 新增的界面色（浅色模式）。深色值见 values-night/colors_ui.xml -->
+<!-- 浮动药丸（地址栏/底栏/卡片）专用色，浅色。深色见 values-night/colors_ui.xml -->
 <resources>
     <color name="cb_floating_surface">#FFFFFF</color>
-    <color name="cb_hairline">#E7DCCF</color>
-    <color name="cb_lock_chip">#F5ECE2</color>
-    <color name="cb_icon">#4F4539</color>
-    <color name="cb_shadow">#40211A15</color>
+    <color name="cb_hairline">#D3D9E6</color>
+    <color name="cb_lock_chip">#E6EBF5</color>
+    <color name="cb_icon">#222B3D</color>
+    <color name="cb_shadow">#331A2240</color>
     <color name="cb_ripple_on_primary">#33FFFFFF</color>
 </resources>
