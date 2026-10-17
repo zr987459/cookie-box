@@ -32,6 +32,7 @@
 | T-017 | 评估 `usesCleartextTraffic=true`：改用 network_security_config，默认禁止明文，仅用户手动输入 http:// 时提示后放行 | `AndroidManifest.xml`、新增 `res/xml/network_security_config.xml` | https 站点不受影响；http 站点有明确提示 | — | 待办 |
 | T-018 | 电脑版视口去闪烁：`FORCE_DESKTOP_VIEWPORT_JS` 从 onPageFinished 改为 `WebViewCompat.addDocumentStartJavaScript`（支持时）+ `useWideViewPort`，不支持时保持现状 | `MainActivity.kt`（applyDesktopViewport 相关） | 响应式站点不再先显示手机版再跳变；登录页按 T-016 跳过 | T-016 | 待办 |
 | T-019 | 主界面 UI 重构：浮动药丸地址栏（SSL 挂锁 / 域名排版 / 内嵌进度）、悬浮胶囊底栏（标签角标 / 提取胶囊）、Slate 深色模式 | `res/layout/activity_main.xml`、`res/values/{dimens,colors_ui}.xml`、`res/values-night/**`、`res/drawable/bg_lock_chip.xml`、`res/drawable/bg_tab_badge.xml`、`docs/design/` | 不改 Kotlin、id 全保留；`assembleDebug` 通过；浅色 / 深色真机各过一遍主界面与 5 个底部弹窗 | — | 待审 |
+| T-020 | 高对比度配色重构：修复浅色模式白字压白底（1.05:1）；浅/深两套调色板全部文字 ≥ 7:1（WCAG AAA）；补齐 M3 颜色角色；统一对话框与底部弹窗；小字下限 11sp | `res/values*/{colors,colors_ui,themes}.xml`、`res/drawable/{bg_bottom_sheet,bg_search_box,bg_tag}.xml`、`res/layout/*`（仅字号与角标背景）、`docs/design/ui-contrast-t020.md` | 不改 Kotlin、id 全保留；`assembleDebug` 通过；浅色 / 深色真机各过一遍主界面、5 个底部弹窗、对话框 | T-019 | 待审 |
 
 ## P2 — 路线图功能（ROADMAP 阶段四）
 

@@ -1,10 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 深色模式：Slate 极简黑。底色 #0F172A，浮层 #151E31，发丝边 #243045 -->
+<!-- 界面层色（深色）：底 #0A0D14 → 面 #11151E → 浮层 #171C27 → 次级面 #1E2432，逐级提亮 -->
 <resources>
-    <color name="cb_floating_surface">#151E31</color>
-    <color name="cb_hairline">#243045</color>
-    <color name="cb_lock_chip">#1E293B</color>
-    <color name="cb_icon">#CBD5E1</color>
-    <color name="cb_shadow">#99000000</color>
-    <color name="cb_ripple_on_primary">#33000000</color>
+    <color name="cb_floating_surface">#171C27</color>
+    <color name="cb_sheet_surface">#141923</color>
+    <color name="cb_tag_bg">#232B3B</color>
+    <color name="cb_hairline">#2E3647</color>
+    <color name="cb_lock_chip">#232B3B</color>
+    <color name="cb_icon">#DCE1EA</color>                   <!-- 11.3:1 -->
+    <color name="cb_shadow">#B3000000</color>
+    <color name="cb_ripple_on_primary">#330A1966</color>
+    <color name="cb_scrim">#B3000000</color>
 </resources>
