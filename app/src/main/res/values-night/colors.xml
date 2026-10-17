@@ -27,5 +27,7 @@
     <color name="divider">#232937</color>
     <color name="success">#7FDBA2</color>
     <color name="danger">#FFB4AB</color>
+    <!-- T-023：colorOutline，非文字 UI 边界 ≥ 3:1 -->
+    <color name="outline">#8A93A6</color>
     <color name="search_border">#333B4D</color>
 </resources>

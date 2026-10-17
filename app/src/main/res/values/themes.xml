@@ -27,7 +27,7 @@
         <item name="colorSurfaceContainer">@color/cb_floating_surface</item>
         <item name="colorSurfaceContainerHigh">@color/cb_floating_surface</item>
         <item name="colorSurfaceContainerHighest">@color/surface_variant</item>
-        <item name="colorOutline">@color/search_border</item>
+        <item name="colorOutline">@color/outline</item>
         <item name="colorOutlineVariant">@color/cb_hairline</item>
         <item name="colorSurfaceInverse">@color/on_surface</item>
         <item name="colorOnSurfaceInverse">@color/surface</item>

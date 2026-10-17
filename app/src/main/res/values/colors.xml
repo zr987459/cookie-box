@@ -33,5 +33,7 @@
     <color name="divider">#E1E6EF</color>
     <color name="success">#08532D</color>
     <color name="danger">#8C1913</color>
+    <!-- T-023：输入框 / 描边按钮的边界色（colorOutline），非文字 UI 边界 ≥ 3:1（WCAG 1.4.11） -->
+    <color name="outline">#717A8C</color>
     <color name="search_border">#C9D1E1</color>
 </resources>

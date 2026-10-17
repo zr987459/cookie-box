@@ -10,6 +10,9 @@ PAIRS = [("on_primary", "primary"), ("on_primary_container", "primary_container"
          ("on_secondary_container", "secondary_container"), ("cookie_chip_text", "cookie_chip_bg"),
          ("code_text", "code_bg")]
 MIN = 7.0
+# 非文字 UI 边界（WCAG 1.4.11）：输入框 / 描边按钮的 colorOutline 在所有面上 ≥ 3:1
+NONTEXT = [("outline", b) for b in SURFACES]
+MIN_NONTEXT = 3.0
 
 
 def load(folder):
@@ -43,6 +46,12 @@ for mode, pal in (("light", light), ("night", night)):
             failed += 1
             print(f"FAIL [{mode}] {f} {pal[f]} on {b} {pal[b]}: {r:.2f}:1")
     print(f"[{mode}] worst text contrast {worst:.2f}:1")
+    for f, b in NONTEXT:
+        r = ratio(pal[f], pal[b])
+        if r < MIN_NONTEXT:
+            failed += 1
+            print(f"FAIL [{mode}] {f} {pal[f]} on {b} {pal[b]}: {r:.2f}:1 (non-text, need 3:1)")
+    print(f"[{mode}] worst outline contrast {min(ratio(pal[f], pal[b]) for f, b in NONTEXT):.2f}:1")
 missing = set(load("values")) - set(load("values-night"))
 if missing:
     failed += 1

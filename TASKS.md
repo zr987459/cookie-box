@@ -41,6 +41,7 @@
 | T-012 | 实现导出备份（按 T-011） | 待 T-011 定 | — | T-011 | 待办 |
 | T-013 | 实现导入备份：按 id 合并，绝不覆盖本地已有记录 | 待 T-011 定 | 导入不丢本地数据 | T-012 | 待办 |
 | T-014 | 设计：Cookie 编辑与写回 WebView | `docs/adr/` | — | — | 待办 |
+| T-023 | 描边对比度补丁（主人指派，基于 v1.9 a220492）：`colorOutline` 从 search_border（约 1.5:1）改为新色 `outline`，输入框 / 描边按钮边界 ≥ 3:1；对比度门禁增加非文字检查 | `res/values{,-night}/colors.xml`、`res/values/themes.xml`、`scripts/check_contrast.py` | 门禁退出码 0；`assembleDebug` 通过；浅 / 深色真机确认 4 个输入框与 4 个描边按钮边框清晰 | — | 待审 |
 
 ## 已完成
 
