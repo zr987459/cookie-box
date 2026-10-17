@@ -1,28 +1,33 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 深色模式下覆盖既有色名（名字不变，只换值），让底部弹窗等存量界面一起变暗 -->
+<!--
+  CookieBox 调色板 · 深色（T-020 高对比度重制）
+  底色用带一丝蓝的近黑（OLED 友好但不死黑），文字用暖白，品牌色提亮为靛蓝 200。
+  色名与 values/colors.xml 一一对应，只换值。
+-->
 <resources>
-    <color name="primary">#F5B971</color>
-    <color name="on_primary">#2A1700</color>
-    <color name="primary_container">#3A2A18</color>
-    <color name="on_primary_container">#FFDDB6</color>
+    <color name="primary">#BEC6FF</color>
+    <color name="on_primary">#14185A</color>
+    <color name="primary_container">#2C3178</color>
+    <color name="on_primary_container">#E3E6FF</color>
 
-    <color name="secondary">#CBB89A</color>
-    <color name="on_secondary">#2A1F0F</color>
-    <color name="secondary_container">#1E293B</color>
-    <color name="on_secondary_container">#E2E8F0</color>
+    <color name="secondary">#C4C9D6</color>
+    <color name="on_secondary">#1A1E28</color>
+    <color name="secondary_container">#262A35</color>
+    <color name="on_secondary_container">#E8EAF0</color>
 
-    <color name="background">#0F172A</color>
-    <color name="on_background">#E2E8F0</color>
-    <color name="surface">#0F172A</color>
-    <color name="on_surface">#E2E8F0</color>
-    <color name="surface_variant">#1E293B</color>
-    <color name="on_surface_variant">#94A3B8</color>
+    <color name="background">#0C0D11</color>
+    <color name="on_background">#F2F3F7</color>
+    <color name="surface">#14161C</color>
+    <color name="on_surface">#F2F3F7</color>
+    <color name="surface_variant">#1F222B</color>
+    <color name="on_surface_variant">#C6CAD6</color>
 
-    <color name="cookie_chip_bg">#2B2113</color>
-    <color name="cookie_chip_text">#FBBF77</color>
-    <color name="code_bg">#020617</color>
-    <color name="code_text">#CBD5E1</color>
-    <color name="divider">#243045</color>
-    <color name="success">#4ADE80</color>
-    <color name="danger">#F87171</color>
+    <color name="cookie_chip_bg">#262B66</color>
+    <color name="cookie_chip_text">#DDE1FF</color>
+    <color name="code_bg">#08090C</color>
+    <color name="code_text">#E4E7EE</color>
+    <color name="divider">#2A2E39</color>
+    <color name="success">#7BE3B0</color>
+    <color name="danger">#FFB3BE</color>
+    <color name="search_border">#363B48</color>
 </resources>

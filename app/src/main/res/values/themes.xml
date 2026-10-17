@@ -1,37 +1,62 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <!-- Base application theme: Modern Professional Slate/Dark. -->
+    <!--
+      CookieBox 主题（浅色）。深色见 values-night/themes.xml，两份结构保持一致，只有系统栏图标明暗不同。
+      所有颜色均引用 colors.xml 的语义色名，禁止在主题/布局里写死色值。
+    -->
     <style name="Theme.CookieBox" parent="Theme.Material3.DayNight.NoActionBar">
-        <!-- Primary brand color. -->
         <item name="colorPrimary">@color/primary</item>
         <item name="colorOnPrimary">@color/on_primary</item>
         <item name="colorPrimaryContainer">@color/primary_container</item>
         <item name="colorOnPrimaryContainer">@color/on_primary_container</item>
 
-        <!-- Secondary brand color. -->
         <item name="colorSecondary">@color/secondary</item>
         <item name="colorOnSecondary">@color/on_secondary</item>
         <item name="colorSecondaryContainer">@color/secondary_container</item>
         <item name="colorOnSecondaryContainer">@color/on_secondary_container</item>
 
-        <!-- Background & Surface -->
         <item name="android:colorBackground">@color/background</item>
+        <item name="colorOnBackground">@color/on_background</item>
         <item name="colorSurface">@color/surface</item>
         <item name="colorOnSurface">@color/on_surface</item>
         <item name="colorSurfaceVariant">@color/surface_variant</item>
         <item name="colorOnSurfaceVariant">@color/on_surface_variant</item>
+        <item name="colorOutline">@color/search_border</item>
+        <item name="colorOutlineVariant">@color/divider</item>
+        <item name="colorError">@color/danger</item>
 
-        <!-- Status bar & Navigation bar: Dark -->
-        <item name="android:statusBarColor">@color/surface</item>
-        <item name="android:windowLightStatusBar">false</item>
-        <item name="android:navigationBarColor">@color/surface</item>
-        <item name="android:windowLightNavigationBar">false</item>
+        <!-- 未显式设置 textColor 的控件（对话框、Snackbar、菜单、输入框提示）也走高对比度色 -->
+        <item name="android:textColorPrimary">@color/on_surface</item>
+        <item name="android:textColorSecondary">@color/on_surface_variant</item>
+        <item name="android:textColorHint">@color/on_surface_variant</item>
+        <item name="android:textColorLink">@color/primary</item>
+        <item name="android:textColorHighlight">@color/primary_container</item>
+        <item name="colorControlNormal">@color/on_surface_variant</item>
+        <item name="colorControlActivated">@color/primary</item>
+        <item name="colorControlHighlight">@color/cb_shadow</item>
+
+        <item name="android:statusBarColor">@color/background</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:navigationBarColor">@color/background</item>
+        <item name="android:windowLightNavigationBar" tools:targetApi="o_mr1">true</item>
+
+        <item name="bottomSheetDialogTheme">@style/BottomSheetDialogTheme</item>
+        <item name="materialAlertDialogTheme">@style/ThemeOverlay.CookieBox.Dialog</item>
     </style>
 
-    <style name="BottomSheetDialogTheme" parent="Theme.Material3.DayNight.BottomSheetDialog">
+    <style name="BottomSheetDialogTheme" parent="ThemeOverlay.Material3.BottomSheetDialog">
         <item name="bottomSheetStyle">@style/BottomSheetModalStyle</item>
+        <item name="android:navigationBarColor">@color/surface</item>
     </style>
 
-    <style name="BottomSheetModalStyle" parent="Widget.Design.BottomSheet.Modal">
+    <style name="BottomSheetModalStyle" parent="Widget.Material3.BottomSheet.Modal">
         <item name="android:background">@android:color/transparent</item>
+        <item name="backgroundTint">@android:color/transparent</item>
+    </style>
+
+    <style name="ThemeOverlay.CookieBox.Dialog" parent="ThemeOverlay.Material3.MaterialAlertDialog">
+        <item name="colorSurface">@color/surface</item>
+        <item name="colorOnSurface">@color/on_surface</item>
+        <item name="colorOnSurfaceVariant">@color/on_surface_variant</item>
+        <item name="colorPrimary">@color/primary</item>
     </style>
 </resources>

@@ -2,6 +2,19 @@
 
 模板见 AGENTS.md 第 6 节。
 
+## 2026-10-17 12:45 CST · 开发者（UI/UX，Hark） · T-021
+- 分支 / 提交：task/T-021-high-contrast（见本提交）
+- 完成：
+  - 定位"文字看不清"根因：浅色模式 colors.xml（深色 Slate）与 colors_ui.xml（浅米色）两套调色板混用，浮动地址栏/底栏出现近白字 on 白底（1.05:1）；门禁在 main 上报 30 项不达标
+  - 重做浅/深两套调色板（色名不变只换值）：M3 中性 + 靛蓝强调；themes.xml 补文字/控件色、浅色系统栏、统一 M3 底部弹窗与对话框
+  - 6 处 9sp 角标提到 11sp，10sp 文字提到 11sp（底栏角标 10sp）
+  - 新增 scripts/check_contrast.py：33 组组合 × 浅深两套全部 ≥7:1（最低 8.04）
+  - 设计说明 docs/design/ui-contrast-t021.md
+- 未完成 / 风险：未编译、未真机（沙盒无 Android SDK）；仓库里另有 task/T-020-ui-contrast 与 ui/high-contrast-1.9 两个同主题分支，与本分支改同一批文件，只能择一合并（后者还改了 CI 和版本号）
+- 兼容性验证：不涉及存储（只改资源，Kotlin 与 view id 未改）
+- 泄露自查：无新增密钥与敏感日志
+- 下一棒建议：本地智能体 assembleDebug + 浅/深真机截图，三个配色分支择一合入 main
+
 ## 2026-10-17 03:45 CST · 地面总执行官（本地智能体） · T-019 与安全加固合并完成
 - 分支 / 提交：main (v1.8.0, versionCode 28)
 - 完成：
