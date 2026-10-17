@@ -1,10 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- T-019 新增的界面色（浅色模式）。深色值见 values-night/colors_ui.xml -->
+<!-- T-019 / T-022 界面色（浅色模式）。深色值见 values-night/colors_ui.xml -->
 <resources>
     <color name="cb_floating_surface">#FFFFFF</color>
-    <color name="cb_hairline">#E7DCCF</color>
-    <color name="cb_lock_chip">#F5ECE2</color>
-    <color name="cb_icon">#4F4539</color>
-    <color name="cb_shadow">#40211A15</color>
+    <color name="cb_hairline">#DDD3C6</color>
+    <color name="cb_lock_chip">#EFE7DC</color>
+    <color name="cb_icon">#2B241E</color>
+    <color name="cb_shadow">#33211A15</color>
     <color name="cb_ripple_on_primary">#33FFFFFF</color>
+
+    <!-- T-022 新增：Material 3 角色补全，让未显式写色的控件（Chip、描边按钮、输入框、对话框）也高对比 -->
+    <color name="cb_outline">#6E6257</color>
+    <color name="cb_outline_variant">#D6CCBF</color>
+    <color name="cb_error_container">#FFDAD6</color>
+    <color name="cb_on_error_container">#410004</color>
+    <color name="cb_surface_container_lowest">#FFFFFF</color>
+    <color name="cb_surface_container_low">#FBF8F4</color>
+    <color name="cb_surface_container">#F6F1EA</color>
+    <color name="cb_surface_container_high">#F2EDE6</color>
+    <color name="cb_surface_container_highest">#ECE5DC</color>
+    <color name="cb_inverse_surface">#322B25</color>
+    <color name="cb_inverse_on_surface">#FAF4EE</color>
+    <color name="cb_inverse_primary">#FFC47E</color>
 </resources>

@@ -1,10 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 深色模式：Slate 极简黑。底色 #0F172A，浮层 #151E31，发丝边 #243045 -->
+<!-- T-022 深色：石墨底 #0D0E11，弹窗 #15171C，浮层药丸 #1A1D23，发丝边 #323844 -->
 <resources>
-    <color name="cb_floating_surface">#151E31</color>
-    <color name="cb_hairline">#243045</color>
-    <color name="cb_lock_chip">#1E293B</color>
-    <color name="cb_icon">#CBD5E1</color>
+    <color name="cb_floating_surface">#1A1D23</color>
+    <color name="cb_hairline">#323844</color>
+    <color name="cb_lock_chip">#2A2F38</color>
+    <color name="cb_icon">#E7EAEE</color>
     <color name="cb_shadow">#99000000</color>
     <color name="cb_ripple_on_primary">#33000000</color>
+
+    <color name="cb_outline">#9AA1AC</color>
+    <color name="cb_outline_variant">#3A414D</color>
+    <color name="cb_error_container">#5C1A16</color>
+    <color name="cb_on_error_container">#FFDAD6</color>
+    <color name="cb_surface_container_lowest">#0A0B0D</color>
+    <color name="cb_surface_container_low">#121418</color>
+    <color name="cb_surface_container">#17191E</color>
+    <color name="cb_surface_container_high">#1F2229</color>
+    <color name="cb_surface_container_highest">#272B33</color>
+    <color name="cb_inverse_surface">#ECEEF1</color>
+    <color name="cb_inverse_on_surface">#1B1E23</color>
+    <color name="cb_inverse_primary">#6E3800</color>
 </resources>

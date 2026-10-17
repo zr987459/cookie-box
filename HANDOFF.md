@@ -2,6 +2,14 @@
 
 模板见 AGENTS.md 第 6 节。
 
+## 2026-10-17 12:45 CST · 开发者（UI/UX，Hark） · T-022
+- 分支 / 提交：task/T-022-warm-paper-contrast（从 main 切出）
+- 完成：修复浅色模式「白字压白底」（浅色沿用了深色色板）；浅色「暖纸」+ 深色「石墨琥珀」两套新配色，所有文字色 ≥ 7:1（WCAG AAA）；主题合并为一份并补全 M3 角色、系统栏随主题切换；底部弹窗改为 overlay 主题 + 发丝边。设计与对比度表见 docs/design/ui-contrast-t022.md
+- 未完成 / 风险：未编译、未真机验证（仅 GitHub API 提交）。需验证底部弹窗背景 / 圆角、API 24–26 导航栏、surfaceContainer 属性解析
+- 兼容性验证：不涉及存储（只改 values / values-night / bg_bottom_sheet，色名与 id 全保留，Kotlin 未改动）
+- 泄露自查：无新增密钥与敏感日志
+- 下一棒建议：审查者跑 assembleDebug，浅色 / 深色真机过主界面 + 5 个弹窗后合入
+
 ## 2026-10-17 03:45 CST · 地面总执行官（本地智能体） · T-019 与安全加固合并完成
 - 分支 / 提交：main (v1.8.0, versionCode 28)
 - 完成：

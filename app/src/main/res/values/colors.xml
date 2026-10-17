@@ -1,30 +1,37 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    T-022 高对比度配色 · 浅色模式「Warm Paper / 暖纸」
+    色名与旧版完全一致（只换值），存量布局 / Kotlin 引用零改动。
+    所有文字色在其实际底色上均 ≥ 7:1（WCAG AAA），计算表见 docs/design/ui-contrast-t022.md。
+    修复点：旧版浅色模式沿用了深色色板（on_surface #F8FAFC），而 T-019 的浮层是白色 → 白字压白底，看不见。
+-->
 <resources>
-    <!-- Modern Professional Browser Slate/Dark Palette -->
-    <color name="primary">#3B82F6</color>
+    <!-- 品牌：焦糖可可棕。作文字 / 图标 / 实心按钮底色都 ≥ 8:1 -->
+    <color name="primary">#6E3800</color>
     <color name="on_primary">#FFFFFF</color>
-    <color name="primary_container">#1E3A8A</color>
-    <color name="on_primary_container">#DBEAFE</color>
+    <color name="primary_container">#FFE2C2</color>
+    <color name="on_primary_container">#2E1600</color>
 
-    <color name="secondary">#64748B</color>
+    <color name="secondary">#5C5047</color>
     <color name="on_secondary">#FFFFFF</color>
-    <color name="secondary_container">#1E293B</color>
-    <color name="on_secondary_container">#F1F5F9</color>
+    <color name="secondary_container">#ECE3D7</color>
+    <color name="on_secondary_container">#231A12</color>
 
-    <color name="background">#0B0F17</color>
-    <color name="on_background">#F8FAFC</color>
-    <color name="surface">#111827</color>
-    <color name="on_surface">#F8FAFC</color>
-    <color name="surface_variant">#1E293B</color>
-    <color name="on_surface_variant">#94A3B8</color>
+    <!-- 三级面：底色（暖纸） < 卡片（燕麦） < 浮层 / 弹窗（纯白） -->
+    <color name="background">#F6F3EE</color>
+    <color name="on_background">#1B1612</color>
+    <color name="surface">#FFFFFF</color>
+    <color name="on_surface">#1B1612</color>
+    <color name="surface_variant">#F2EDE6</color>
+    <color name="on_surface_variant">#4A4036</color>
 
     <!-- Functional Colors -->
-    <color name="cookie_chip_bg">#1E293B</color>
-    <color name="cookie_chip_text">#60A5FA</color>
-    <color name="code_bg">#0A0E17</color>
-    <color name="code_text">#E2E8F0</color>
-    <color name="divider">#1E293B</color>
-    <color name="success">#10B981</color>
-    <color name="danger">#EF4444</color>
-    <color name="search_border">#2D3D52</color>
+    <color name="cookie_chip_bg">#FFE2C2</color>
+    <color name="cookie_chip_text">#5A2D00</color>
+    <color name="code_bg">#F3EEE7</color>
+    <color name="code_text">#1E1913</color>
+    <color name="divider">#E4DCD1</color>
+    <color name="success">#065A30</color>
+    <color name="danger">#8C1219</color>
+    <color name="search_border">#D6CCBF</color>
 </resources>
