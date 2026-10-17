@@ -1,34 +1,60 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <!-- Base application theme: Modern Professional Slate/Dark. -->
-    <style name="Theme.CookieBox" parent="Theme.Material3.DayNight.NoActionBar">
-        <!-- Primary brand color. -->
+    <!-- CookieBox · Slate Night 高对比度主题。固定深色（Material3.Dark），values-night 同步一致 -->
+    <style name="Theme.CookieBox" parent="Theme.Material3.Dark.NoActionBar">
         <item name="colorPrimary">@color/primary</item>
         <item name="colorOnPrimary">@color/on_primary</item>
         <item name="colorPrimaryContainer">@color/primary_container</item>
         <item name="colorOnPrimaryContainer">@color/on_primary_container</item>
 
-        <!-- Secondary brand color. -->
         <item name="colorSecondary">@color/secondary</item>
         <item name="colorOnSecondary">@color/on_secondary</item>
         <item name="colorSecondaryContainer">@color/secondary_container</item>
         <item name="colorOnSecondaryContainer">@color/on_secondary_container</item>
 
-        <!-- Background & Surface -->
         <item name="android:colorBackground">@color/background</item>
+        <item name="colorOnBackground">@color/on_background</item>
         <item name="colorSurface">@color/surface</item>
         <item name="colorOnSurface">@color/on_surface</item>
         <item name="colorSurfaceVariant">@color/surface_variant</item>
         <item name="colorOnSurfaceVariant">@color/on_surface_variant</item>
+        <item name="colorSurfaceContainerLowest">@color/surface_container_lowest</item>
+        <item name="colorSurfaceContainerLow">@color/surface_container_low</item>
+        <item name="colorSurfaceContainer">@color/surface_container</item>
+        <item name="colorSurfaceContainerHigh">@color/surface_container_high</item>
+        <item name="colorSurfaceContainerHighest">@color/surface_container_highest</item>
+        <item name="colorOutline">@color/outline</item>
+        <item name="colorOutlineVariant">@color/outline_variant</item>
+        <item name="colorError">@color/danger</item>
+        <item name="colorOnError">@color/on_danger</item>
 
-        <!-- Status bar & Navigation bar: Dark -->
-        <item name="android:statusBarColor">@color/surface</item>
+        <!-- 系统控件默认文字色：未显式指定 textColor 的控件也保持高对比 -->
+        <item name="android:textColorPrimary">@color/text_primary</item>
+        <item name="android:textColorSecondary">@color/text_secondary</item>
+        <item name="android:textColorHint">@color/text_hint</item>
+        <item name="android:textColorTertiary">@color/text_hint</item>
+        <item name="colorControlNormal">@color/text_secondary</item>
+        <item name="colorControlActivated">@color/primary</item>
+        <item name="colorControlHighlight">#1FFFFFFF</item>
+
+        <item name="android:windowBackground">@color/background</item>
+        <item name="android:statusBarColor">@color/background</item>
         <item name="android:windowLightStatusBar">false</item>
-        <item name="android:navigationBarColor">@color/surface</item>
-        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:navigationBarColor">@color/background</item>
+        <item name="android:windowLightNavigationBar" tools:targetApi="o_mr1">false</item>
     </style>
 
-    <style name="BottomSheetDialogTheme" parent="Theme.Material3.DayNight.BottomSheetDialog">
+    <style name="BottomSheetDialogTheme" parent="Theme.Material3.Dark.BottomSheetDialog">
         <item name="bottomSheetStyle">@style/BottomSheetModalStyle</item>
+        <item name="colorPrimary">@color/primary</item>
+        <item name="colorOnPrimary">@color/on_primary</item>
+        <item name="colorSurface">@color/surface</item>
+        <item name="colorOnSurface">@color/on_surface</item>
+        <item name="colorOnSurfaceVariant">@color/on_surface_variant</item>
+        <item name="colorSurfaceContainerLow">@color/surface_container</item>
+        <item name="android:textColorPrimary">@color/text_primary</item>
+        <item name="android:textColorSecondary">@color/text_secondary</item>
+        <item name="android:textColorHint">@color/text_hint</item>
+        <item name="android:navigationBarColor">@color/surface</item>
     </style>
 
     <style name="BottomSheetModalStyle" parent="Widget.Design.BottomSheet.Modal">

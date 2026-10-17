@@ -1,28 +1,59 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 深色模式下覆盖既有色名（名字不变，只换值），让底部弹窗等存量界面一起变暗 -->
+<!--
+    CookieBox · Slate Night 高对比度配色（task/ui-contrast-redesign）
+    应用固定为深色主题：values/ 与 values-night/ 取值完全一致，避免系统浅色模式下出现“白底白字”。
+    对比度（WCAG 2.1，基于浮层底色 #151E31）：
+      主文字 #FFFFFF 16.6:1 · 副文字 #CBD5E1 11.2:1 · 提示文字 #94A3B8 6.5:1
+      主色 #7AB4FF 7.8:1 · 主色按钮 深字 #0B0F17 on #7AB4FF 9.0:1
+    规则：正文禁止低于 4.5:1；不要再在文字上叠加 alpha。
+-->
+<!-- values-night：与 values/ 完全一致（应用固定深色）。修改配色请两处同步。 -->
 <resources>
-    <color name="primary">#F5B971</color>
-    <color name="on_primary">#2A1700</color>
-    <color name="primary_container">#3A2A18</color>
-    <color name="on_primary_container">#FFDDB6</color>
+    <!-- 主色：Azure 点睛蓝（深色底上辨识度高，按钮上配深色文字） -->
+    <color name="primary">#7AB4FF</color>
+    <color name="on_primary">#0B0F17</color>
+    <color name="primary_container">#1D3A6E</color>
+    <color name="on_primary_container">#DBEAFE</color>
 
-    <color name="secondary">#CBB89A</color>
-    <color name="on_secondary">#2A1F0F</color>
-    <color name="secondary_container">#1E293B</color>
-    <color name="on_secondary_container">#E2E8F0</color>
+    <!-- 次色：明亮 Slate -->
+    <color name="secondary">#CBD5E1</color>
+    <color name="on_secondary">#0B0F17</color>
+    <color name="secondary_container">#1E293F</color>
+    <color name="on_secondary_container">#F1F5F9</color>
 
-    <color name="background">#0F172A</color>
-    <color name="on_background">#E2E8F0</color>
-    <color name="surface">#0F172A</color>
-    <color name="on_surface">#E2E8F0</color>
-    <color name="surface_variant">#1E293B</color>
-    <color name="on_surface_variant">#94A3B8</color>
+    <!-- 底色层级：页面 #0B0F17 → 浮层/弹窗 #151E31 → 卡片 #1E293F -->
+    <color name="background">#0B0F17</color>
+    <color name="on_background">#FFFFFF</color>
+    <color name="surface">#151E31</color>
+    <color name="on_surface">#FFFFFF</color>
+    <color name="surface_variant">#1E293F</color>
+    <color name="on_surface_variant">#CBD5E1</color>
 
-    <color name="cookie_chip_bg">#2B2113</color>
-    <color name="cookie_chip_text">#FBBF77</color>
-    <color name="code_bg">#020617</color>
-    <color name="code_text">#CBD5E1</color>
-    <color name="divider">#243045</color>
-    <color name="success">#4ADE80</color>
+    <!-- M3 Surface Container 层级（弹窗/对话框/菜单统一走 Slate，而非默认紫灰） -->
+    <color name="surface_container_lowest">#0B0F17</color>
+    <color name="surface_container_low">#111827</color>
+    <color name="surface_container">#151E31</color>
+    <color name="surface_container_high">#1E293F</color>
+    <color name="surface_container_highest">#26334D</color>
+
+    <!-- 文字语义色（新） -->
+    <color name="text_primary">#FFFFFF</color>
+    <color name="text_secondary">#CBD5E1</color>
+    <color name="text_hint">#94A3B8</color>
+    <color name="text_disabled">#64748B</color>
+
+    <!-- 描边 -->
+    <color name="outline">#475569</color>
+    <color name="outline_variant">#334155</color>
+
+    <!-- 功能色 -->
+    <color name="cookie_chip_bg">#16294A</color>
+    <color name="cookie_chip_text">#8EC5FF</color>
+    <color name="code_bg">#0B0F17</color>
+    <color name="code_text">#E2E8F0</color>
+    <color name="divider">#263248</color>
+    <color name="success">#34D399</color>
     <color name="danger">#F87171</color>
+    <color name="on_danger">#0B0F17</color>
+    <color name="search_border">#334155</color>
 </resources>

@@ -1,10 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 深色模式：Slate 极简黑。底色 #0F172A，浮层 #151E31，发丝边 #243045 -->
+<!-- 界面装饰色 · Slate Night。应用固定深色，values-night/colors_ui.xml 取值相同 -->
+<!-- values-night：与 values/ 完全一致（应用固定深色）。修改配色请两处同步。 -->
 <resources>
+    <!-- 悬浮地址栏 / 底栏胶囊 -->
     <color name="cb_floating_surface">#151E31</color>
-    <color name="cb_hairline">#243045</color>
-    <color name="cb_lock_chip">#1E293B</color>
-    <color name="cb_icon">#CBD5E1</color>
+    <!-- 发丝描边：比浮层亮一档，轮廓清楚但不抢眼 -->
+    <color name="cb_hairline">#334155</color>
+    <!-- SSL 挂锁底座 -->
+    <color name="cb_lock_chip">#1E293F</color>
+    <!-- 工具栏图标：提亮到 Slate-200，13.5:1 -->
+    <color name="cb_icon">#E2E8F0</color>
     <color name="cb_shadow">#99000000</color>
-    <color name="cb_ripple_on_primary">#33000000</color>
+    <!-- 主色按钮为浅蓝，水波纹用深色 -->
+    <color name="cb_ripple_on_primary">#330B0F17</color>
 </resources>
