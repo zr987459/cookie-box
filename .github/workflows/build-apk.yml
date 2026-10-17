@@ -26,6 +26,9 @@ jobs:
           distribution: 'temurin'
           cache: 'gradle'
 
+      - name: WCAG AAA Contrast Gate
+        run: python3 scripts/check_contrast.py
+
       - name: Grant Execute Permission for Gradlew
         run: chmod +x gradlew
 
