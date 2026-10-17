@@ -47,23 +47,25 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginEnd="6dp"
-            android:background="@drawable/bg_search_box"
-            android:paddingHorizontal="5dp"
-            android:paddingVertical="1dp"
+            android:background="@drawable/bg_tag_chip"
+            android:paddingHorizontal="7dp"
+            android:paddingVertical="2dp"
             android:text="⚪ 未检测"
             android:textColor="@color/on_surface_variant"
-            android:textSize="9sp"
+            android:fontFamily="sans-serif-medium"
+                    android:textSize="11sp"
             tools:text="💚 正常保鲜" />
 
         <TextView
             android:id="@+id/tvAccountCookiesBadge"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:background="@drawable/bg_search_box"
-            android:paddingHorizontal="5dp"
-            android:paddingVertical="1dp"
+            android:background="@drawable/bg_tag_chip"
+            android:paddingHorizontal="7dp"
+            android:paddingVertical="2dp"
             android:textColor="@color/on_surface_variant"
-            android:textSize="9sp"
+            android:fontFamily="sans-serif-medium"
+                    android:textSize="11sp"
             tools:text="6 项" />
 
         <TextView
@@ -72,7 +74,7 @@
             android:layout_height="wrap_content"
             android:layout_marginStart="6dp"
             android:textColor="@color/on_surface_variant"
-            android:textSize="10sp"
+            android:textSize="12sp"
             tools:text="10-15 09:45" />
 
         <ImageButton
@@ -105,7 +107,7 @@
             android:paddingHorizontal="4dp"
             android:text="进入"
             android:textColor="@color/on_primary"
-            android:textSize="10sp"
+            android:textSize="12sp"
             app:backgroundTint="@color/primary"
             app:cornerRadius="8dp"
             app:icon="@drawable/ic_open_in_browser"
@@ -127,7 +129,7 @@
             android:paddingHorizontal="4dp"
             android:text="保鲜续期"
             android:textColor="@color/primary"
-            android:textSize="10sp"
+            android:textSize="12sp"
             app:cornerRadius="8dp"
             app:icon="@drawable/ic_bolt"
             app:iconSize="11dp"
@@ -147,7 +149,7 @@
             android:insetBottom="0dp"
             android:paddingHorizontal="4dp"
             android:text="复制"
-            android:textSize="10sp"
+            android:textSize="12sp"
             app:cornerRadius="8dp" />
 
         <Space
@@ -164,7 +166,7 @@
             android:insetBottom="0dp"
             android:paddingHorizontal="4dp"
             android:text="详情"
-            android:textSize="10sp"
+            android:textSize="12sp"
             app:cornerRadius="8dp" />
     </LinearLayout>
 

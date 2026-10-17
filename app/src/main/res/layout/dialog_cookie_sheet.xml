@@ -210,7 +210,7 @@
                 android:layout_height="wrap_content"
                 android:text="💡 提示：点击下方文本框任意区域即可秒级复制全文"
                 android:textColor="@color/primary"
-                android:textSize="11sp" />
+                android:textSize="12sp" />
 
             <ScrollView
                 android:id="@+id/scrollCodeView"

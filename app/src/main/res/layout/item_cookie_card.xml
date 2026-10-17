@@ -34,7 +34,7 @@
                 android:paddingVertical="2dp"
                 android:text="核心凭据"
                 android:textColor="@color/primary"
-                android:textSize="10sp"
+                android:textSize="12sp"
                 android:textStyle="bold" />
 
             <TextView
@@ -60,7 +60,7 @@
                 android:minWidth="0dp"
                 android:paddingHorizontal="10dp"
                 android:text="复制值"
-                android:textSize="11sp"
+                android:textSize="12sp"
                 app:cornerRadius="10dp" />
 
             <!-- 复制完整 name=value -->
@@ -103,7 +103,7 @@
                 android:fontFamily="monospace"
                 android:maxLines="3"
                 android:textColor="@color/on_surface_variant"
-                android:textSize="11sp"
+                android:textSize="12sp"
                 tools:text="abcdef1234567890abcdef1234567890..." />
         </LinearLayout>
 
@@ -120,7 +120,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:textColor="@color/on_surface_variant"
-                android:textSize="10sp"
+                android:textSize="12sp"
                 tools:text="域名: .bilibili.com" />
 
             <View
@@ -133,7 +133,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:textColor="@color/on_surface_variant"
-                android:textSize="10sp"
+                android:textSize="12sp"
                 tools:text="长度: 32" />
         </LinearLayout>
 

@@ -100,7 +100,7 @@
             android:paddingHorizontal="10dp"
             android:text="⚡ 一键全量保鲜"
             android:textColor="@color/primary"
-            android:textSize="11sp"
+            android:textSize="12sp"
             app:cornerRadius="8dp"
             app:icon="@drawable/ic_bolt"
             app:iconSize="12dp"

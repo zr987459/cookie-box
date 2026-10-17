@@ -52,7 +52,7 @@
             android:layout_weight="1.2"
             android:text="即时翻译为中文"
             android:textColor="@color/on_primary"
-            android:textSize="11sp"
+            android:textSize="12sp"
             app:backgroundTint="@color/primary"
             app:cornerRadius="12dp"
             app:icon="@drawable/ic_translate"
@@ -70,7 +70,7 @@
             android:layout_height="42dp"
             android:layout_weight="1"
             android:text="翻译阅读器"
-            android:textSize="11sp"
+            android:textSize="12sp"
             app:cornerRadius="12dp" />
 
         <Space
@@ -83,7 +83,7 @@
             android:layout_width="wrap_content"
             android:layout_height="42dp"
             android:text="还原"
-            android:textSize="11sp"
+            android:textSize="12sp"
             app:cornerRadius="12dp" />
     </LinearLayout>
 
