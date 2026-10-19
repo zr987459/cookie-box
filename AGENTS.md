@@ -17,8 +17,8 @@
 ## 2. 分支与提交
 
 - `main`：只接受已审查的合并；功能代码不直接推到 main。架构师的纯文档提交例外。
-- `integrate/<x.y>`：版本集成分支（`integrate/1.7` 已停用，落后 main）。
-- `task/<任务ID>-<短名>`：每个任务一个分支，从 `main` 切出，完成后开 PR 到 `main`，由主人合并（ADR-0004 裁决，2026-10-20）。
+- `task/<任务ID>-<短名>`：每个任务一个分支，**从 `main` 切出，开 PR 合回 `main`**（主人 2026-10-20 裁决，见 ADR-0004 §10）。
+- `integrate/<x.y>`：历史版本集成分支（`integrate/1.7` 已落后 main，不再作为新任务基线，保留不删）。
 - **禁止 force push、禁止改写历史、禁止删分支**，除非仓库主人在本次指令里明确批准。
 - 提交信息：Conventional Commits（`feat|fix|docs|refactor|test|ci|chore(scope): 摘要`），正文写「为什么」和「兼容性影响」，末行写 `Task: T-xxx`。
 - 推送前先拉取分支最新 head；有人刚提交就先读他的 HANDOFF 再动手。
@@ -38,13 +38,13 @@
 | `account_vault` | `accounts` / `ask_to_save` / `never_sites` | 账号库 |
 | `browser_prefs` | （见 BrowserPrefs.kt） | 标签会话、浏览设置 |
 | `cookiebox_download` | （见 MainActivity.kt） | 下载设置 |
-| `mcp_prefs` | `enabled` / `port` / `lan_enabled` / `token_enc` / `grants` / `confirm_mode` / `max_body_bytes` / `page_max_body_bytes` / `visited_hosts` / `origin_allowlist` / `call_log` | MCP 本机服务（ADR-0004） |
+| `mcp_prefs`（T-026 起） | `enabled` / `port` / `lan_enabled` / `token_enc` / `grants` / `confirm_mode` / `max_body_bytes` / `page_max_body_bytes` / `visited_hosts` / `origin_allowlist` / `call_log` | MCP 服务设置与授权（ADR-0004） |
 
 | Keystore 别名 | 用途 |
 |---|---|
 | `cookiebox_cookie_vault_key` | Cookie 储存库 |
 | `cookiebox_account_key` | 账号库密码 |
-| `cookiebox_mcp_key` | MCP Token（ADR-0004） |
+| `cookiebox_mcp_key`（T-026 起） | MCP Token（ADR-0004） |
 
 迁移铁律：
 1. 先校验旧数据 → 写新数据 → 回读校验 → 同一次 `commit()` 里删除旧数据；任一步失败保留旧数据。
@@ -64,7 +64,8 @@
 - **网页注入与 JS 桥红线**：
   - 不得新增全局 `addJavascriptInterface`；新桥一律用 `WebViewCompat.addWebMessageListener` 并限定 origin，或只在单次操作期间存在（现存 `CookieBoxDl` 见 T-015）。
   - 所有 `evaluateJavascript` 注入（视口、缩放、翻译、自动填充、下载）必须经过同一个敏感页判定，不得各自绕过；判定规则统一后见 T-016。
-  - 注入脚本只读或只改展示，不得把页面数据（Cookie、表单值、Storage）回传给除本机 UI 以外的任何地方。例外：ADR-0004 授权范围内，经用户授权的数据可交给持有 Token 的 MCP 客户端。
+  - 注入脚本只读或只改展示，不得把页面数据（Cookie、表单值、Storage）回传给除本机 UI 以外的任何地方。
+  - **例外（ADR-0004，2026-10-20 主人批准）**：在用户授权的「身份 × 域名」范围内，数据可交给持有当前 Token 的 MCP 客户端；MCP 的注入同样经统一判定入口，但按 ADR-0004 默认放行。例外范围以 ADR-0004 §3 为准，储存库与账号库数据、公网暴露、隧道、上报永远不在例外内。
 - 已知遗留风险：`cookiebox.jks` 与签名口令目前公开在仓库里（见 T-003）。在主人决定前不得再扩散（不得复制到别处、不得写进文档示例）。
 
 ## 5. 保持项目干净
