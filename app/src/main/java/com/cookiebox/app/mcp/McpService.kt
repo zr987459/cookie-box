@@ -136,6 +136,8 @@ class McpService : Service() {
             tokenProvider = { McpTokenStore.current(applicationContext) },
             originAllowlist = { McpPrefs(applicationContext).originAllowlist }
         )
+        McpTabs.init(applicationContext)
+        McpTabs.seedVisited()
         val protocol = McpProtocol(appVersion(), McpToolRegistry.tools(applicationContext))
         val gateway = McpGateway(auth, protocol)
         val s = McpHttpServer(bind, port, gateway::handle)

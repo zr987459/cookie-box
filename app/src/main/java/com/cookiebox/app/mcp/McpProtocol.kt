@@ -28,8 +28,9 @@ class McpToolResult(val content: JSONArray, val isError: Boolean = false, val st
         fun text(text: String, isError: Boolean = false): McpToolResult =
             McpToolResult(JSONArray().put(JSONObject().put("type", "text").put("text", text)), isError)
 
+        /** JSON 结果只放在 text 里一次（正文可能很大，不再重复放 structuredContent） */
         fun json(obj: JSONObject): McpToolResult =
-            McpToolResult(JSONArray().put(JSONObject().put("type", "text").put("text", obj.toString())), false, obj)
+            McpToolResult(JSONArray().put(JSONObject().put("type", "text").put("text", obj.toString())), false)
     }
 
     fun toJson(): JSONObject = JSONObject().apply {

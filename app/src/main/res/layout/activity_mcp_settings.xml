@@ -132,6 +132,25 @@
                 android:layout_marginTop="8dp"
                 android:text="复制 MCP 客户端配置" />
 
+            <!-- 站点授权 -->
+            <TextView
+                style="@style/McpSectionTitle"
+                android:text="站点授权" />
+
+            <TextView
+                android:id="@+id/tvGrantsSummary"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textColor="?attr/colorOnSurfaceVariant"
+                android:textSize="13sp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnGrants"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="管理站点授权" />
+
             <!-- 端口 -->
             <TextView
                 style="@style/McpSectionTitle"
@@ -225,7 +244,7 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="开启后，持有令牌的 AI 客户端可以通过 MCP 协议使用你在曲奇盒里已登录的网站。站点授权、工具与写操作确认会在后续版本加入；当前版本只提供握手，工具列表为空。关闭开关或点按通知即可立即停止，端口不再监听。"
+                android:text="开启后，持有令牌的 AI 客户端可以通过 MCP 协议使用你在曲奇盒里已登录的网站。AI 只能看到并使用你在「站点授权」里授权的身份与站点。当前版本提供 list_sessions、get_cookies 和只读的 http_request（GET / HEAD）；写操作确认会在后续版本加入。关闭开关或点按通知即可立即停止，端口不再监听。"
                 android:textColor="?attr/colorOnSurfaceVariant"
                 android:textSize="13sp" />
         </LinearLayout>
