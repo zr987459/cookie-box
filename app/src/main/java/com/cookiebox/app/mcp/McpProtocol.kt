@@ -41,7 +41,7 @@ class McpToolResult(val content: JSONArray, val isError: Boolean = false, val st
 
 /**
  * MCP Streamable HTTP（JSON-RPC 2.0 over POST，只回 application/json，不开 SSE 流）。
- * 支持 initialize / notifications/* / ping / tools/list / tools/call；GET 405；DELETE 结束会话。
+ * 支持 initialize / notifications/… / ping / tools/list / tools/call；GET 405；DELETE 结束会话。
  * 准入（Host / Origin / Token）由 [McpAuth] 在调用 [handle] 之前完成。
  */
 class McpProtocol(
