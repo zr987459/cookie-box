@@ -43,6 +43,18 @@
 | T-014 | 设计：Cookie 编辑与写回 WebView | `docs/adr/` | — | — | 待办 |
 | T-024 | 标签自定义名称：标签管理里点铅笔或长按改名，区分多账号；会话里新增 `label` 键持久化（旧数据缺省为空），分身标签打开的新窗口沿用名字；也为后续 MCP `list_sessions` 提供可辨认的名字 | `model/TabItem.kt`、`engine/BrowserPrefs.kt`、`ui/TabsAdapter.kt`、`ui/TabsBottomSheetDialog.kt`、`MainActivity.kt`（会话保存/恢复、重命名弹窗）、`res/layout/item_tab_row.xml`、新增 `res/drawable/ic_edit.xml` | 改名后重启仍在；1.9.0 覆盖安装旧标签照常恢复 | — | 待审(Hark) |
 
+## P2b — 本机 MCP 服务（ADR-0004，未获批前全部阻塞，不得提交功能代码）
+
+分支：每个任务从 `main` 切 `task/T-xxx-短名`，PR 到 `main`，不直接推 main。versionCode：T-026 起 ≥ 31，每次发版高于所有分支当前最大值；签名不变。设计与安全底线以 docs/adr/0004-mcp-server.md 为准。
+
+| ID | 任务 | 范围（只能改这些） | 验收 | 依赖 | 状态 |
+|---|---|---|---|---|---|
+| T-025 | ADR-0004：MCP 服务红线例外（只写文档） | `docs/adr/0004-mcp-server.md`、`TASKS.md`、`HANDOFF.md` | 写清冲突点、例外范围、安全底线、对已有数据零影响；主人批准后把状态改为「已采纳」，并按 ADR §7 修订 AGENTS.md §3/§4 与 docs/ARCHITECTURE.md | — | 待审(待主人批准 ADR-0004) |
+| T-026 | 前台服务 + MCP 握手 + Token + Origin/Host 校验 + 设置开关 | 新增 `mcp/McpService.kt`、`mcp/McpHttpServer.kt`、`mcp/McpProtocol.kt`、`mcp/McpAuth.kt`、`mcp/McpPrefs.kt`、`mcp/McpTokenStore.kt`；`AndroidManifest.xml`（`FOREGROUND_SERVICE`、`FOREGROUND_SERVICE_SPECIAL_USE`、service 声明）；`MainActivity.kt`（仅设置入口）；新增设置界面布局与字符串；`app/build.gradle.kts`（仅 versionCode/versionName）。不引入新依赖 | 默认关闭且端口不可连接；开启后通知「AI 访问已开启」，点按可关；`initialize` / `tools/list`（空列表）/ `ping` 正常；无/错 Token 401；带 Origin 或 Host 不符 403；局域网开关默认关、开启有风险提示；Token 用新别名 `cookiebox_mcp_key` 加密存 `mcp_prefs`；从 1.9.1 覆盖安装标签、储存库、账号库全部保留 | T-025 获批 | 阻塞(待主人批准 ADR-0004) |
+| T-027 | 三个只读工具（list_sessions / get_cookies / http_request）+ 站点白名单 UI | 新增 `mcp/TabRegistry.kt`、`mcp/MainThreadRunner.kt`、`mcp/tools/ListSessions.kt`、`mcp/tools/GetCookies.kt`、`mcp/tools/HttpRequest.kt`、白名单界面与布局；`MainActivity.kt`（仅注册 TabRegistry 实现）；`mcp/McpPrefs.kt`（grants、max_body_bytes） | 只看得到白名单里的「身份 × 域名」；list_sessions 不含 Cookie；http_request 目标必须属于授权域名、逐跳校验重定向、拒绝私网/回环 IP、Set-Cookie 不写回、正文按上限截断；非 GET 在 T-028 前一律拒绝（返回「需要确认，尚未支持」）；日志无 Cookie/Token/正文 | T-026 | 阻塞(待主人批准 ADR-0004) |
+| T-028 | 写操作确认弹窗 + 调用记录页 | 新增 `mcp/WriteGuard.kt`、`mcp/CallLog.kt`、确认界面（Activity/对话框）与调用记录界面及布局；`mcp/tools/HttpRequest.kt`（接入确认）；`AndroidManifest.xml`（确认界面声明） | 非 GET 的 http_request 必弹确认，显示工具名/身份/站点/摘要；锁屏需先解锁；60 s 超时拒绝；「本次会话内该站点不再询问」只存内存；调用记录只含时间/工具/站点/结果/耗时，可一键清空 | T-027 | 阻塞(待主人批准 ADR-0004) |
+| T-029 | 页面操作工具（open_url / get_page_text / screenshot / click / fill / eval_js） | 新增 `mcp/tools/Page*.kt`、`mcp/PageWaiter.kt`；`mcp/TabRegistry.kt`（主线程句柄扩展）；`MainActivity.kt`（仅暴露加载完成回调与 pendingUrl 触发） | 等待加载完成可靠且有超时；pendingUrl 标签先触发加载；click/fill/eval_js 必弹确认；注入走统一敏感页判定，密码框页面拒绝 eval_js、fill 不写密码框；不新增 addJavascriptInterface | T-028、T-016 | 阻塞(待主人批准 ADR-0004) |
+
 ## 已完成
 
 | ID | 任务 | 结果 |
