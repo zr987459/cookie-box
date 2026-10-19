@@ -1,7 +1,7 @@
 # ADR-0004：本机 MCP 服务（让 AI 客户端使用已登录的标签会话）
 
 - 状态：**提议中（待仓库主人批准）**
-- 日期：2026-10-20
+- 日期：2026-10-20（修订 1：主人要求放宽对 AI 的限制、对站点表现得与浏览器本身一致）
 - 关联任务：T-025（本文）、T-026、T-027、T-028、T-029
 - 基线：main @ fd967e7（v1.9.1，versionCode 30）
 
@@ -80,24 +80,32 @@ data class SessionInfo(val id: String, val customName: String, val title: String
 | 工具 | 参数 | 返回 | 读/写 |
 |---|---|---|---|
 | `list_sessions` | 无 | 每个已授权标签：`id`、`customName`、`title`、`host`、`isClone`、`profileName`、该身份已授权域名列表。**不返回 Cookie。** | 读 |
-| `get_cookies` | `session_id`, `domain` | 该身份下该域名的 Cookie（名、值；能取到的属性）。`domain` 必须属于已授权域名。 | 读（敏感，见 §5.5） |
-| `http_request` | `session_id`, `url`, `method`, `headers?`, `body?` | 状态码、响应头、正文（按 `max_body_bytes` 截断并标注 `truncated`），文本按 charset 解码，二进制返回 Base64 | GET/HEAD = 读；其他 = 写 |
+| `get_cookies` | `session_id`, `domain` | 该身份下该域名的 Cookie（名、值；能取到的属性，含 HttpOnly）。`domain` 必须属于已授权域名。 | 读 |
+| `http_request` | `session_id`, `url`, `method`, `headers?`, `body?`, `mode?`(`auto`/`page`/`native`) | 状态码、响应头、正文（按 `max_body_bytes` 截断并标注 `truncated`），文本按 charset 解码，二进制返回 Base64 | GET/HEAD = 读；其他 = 写 |
 
-`http_request` 细则：
-- 不需要 WebView 打开；Cookie 取自该 Profile 的 `CookieManager.getCookie(url)`（主线程取，后台线程发请求）。
-- 只允许 `https://`；`http://` 仅当该域名被用户单独勾选「允许明文」时放行。
-- 目标主机必须等于或是已授权域名的子域；**不自动跟随重定向**，改为逐跳手动跟随（最多 5 跳），每一跳重新校验域名并重新取 Cookie，跨出授权域名即停止并返回 3xx 原样结果。
-- 解析后的 IP 若为回环、私网、链路本地、组播地址则拒绝（防止借域名打到本机 MCP 端口或局域网设备）。
-- 调用方传入的 `Cookie`、`Host` 头被忽略；响应的 `Set-Cookie` **不写回** WebView，不改变登录状态。
-- 默认截断上限 256 KiB，可在设置里调整（上限 4 MiB）。
+`http_request` 细则（修订 1：对站点与该标签的浏览器行为保持一致）：
+
+两种发送通道，`mode=auto` 时自动选择：
+- **`page` 通道（标签已加载且目标与页面同源 / 站点允许跨域时优先）**：在该标签页面上下文里执行 `fetch(url, {credentials:'include'})`，结果经 `evaluateJavascript` 回调取回。请求由 WebView 自己的网络栈发出，TLS / HTTP2 指纹、Cookie、`Sec-Fetch-*`、`Origin`、`Referer`、UA 与页面里的正常请求完全相同，站点看不出差别；`Set-Cookie` 由 WebView 自然处理。受浏览器 CORS 与禁用请求头规则约束。
+- **`native` 通道（标签未加载、跨域被拒或二进制大响应时）**：后台线程用 `HttpURLConnection` 发送，不需要 WebView 打开。为与该标签保持一致：
+  - Cookie 取自该 Profile 的 `CookieManager.getCookie(url)`（主线程取）。
+  - `User-Agent` 用该标签 WebView 实际的 UA（区分电脑版模式），`Accept-Language` 与 WebView 一致；`Referer` 默认取该标签当前页面；调用方传入的请求头覆盖默认值（`Host`、`Cookie` 除外，`Cookie` 始终来自该身份）。
+  - 响应的 `Set-Cookie` **写回**该 Profile 的 CookieManager 并 `flush()`，让站点轮换的会话凭据与 WebView 保持同步，避免同一账号出现两套不一致的会话状态而掉线。
+  - 已知差异：TLS / HTTP2 指纹与 Chromium 不同，对指纹很敏感的站点优先用 `page` 通道。
+- 同一「身份 × 域名」的请求串行发送（与 WebView 的连接复用一致，也避免突发并发）。
+- 允许 `http://` 与 `https://`；目标主机必须等于或是已授权域名的子域。重定向逐跳跟随（最多 10 跳），每跳重新取 Cookie；跳出授权域名时停止并原样返回 3xx。
+- 解析后的 IP 若为回环地址则拒绝（防止借域名打回本机 MCP 端口）；其他地址不限制。
+- 正文默认截断上限 1 MiB，可在设置里调整（上限 8 MiB）。
 
 第二批（T-029，页面操作，写操作需确认）：`open_url`、`get_page_text`、`screenshot`（读）；`click(selector)`、`fill(selector, text)`、`eval_js(code)`（写）。
 - 「等待加载完成」：以 `onPageFinished` + `document.readyState === 'complete'` + 进度 100 为准，带超时；标签处于 `pendingUrl` 状态时先触发加载再等待。
-- 所有注入走 T-016 的统一敏感页判定；含密码框的页面 `eval_js` 一律拒绝，`fill` 拒绝写入 `type=password`。
+- 注入走 T-016 的统一判定入口，但对 MCP 调用默认放行；`fill` 可以填写密码框（AI 的值来自调用方，不读取账号库）。
 - 不新增 `addJavascriptInterface`；结果经 `evaluateJavascript` 回调取得。
-- 页面内容可能包含针对 AI 的「提示注入」。写操作强制手机确认（§5.4）是主要缓解手段，工具返回的页面文本会附带来源说明。
+- 页面内容可能包含针对 AI 的「提示注入」；工具返回的页面文本附带来源说明，写操作是否确认由 §5.4 的用户设置决定。
 
-## 5. 安全底线（全部必须实现，任一缺失不得发版）
+## 5. 安全底线
+
+> 修订 1 的取舍：**限制 AI 的条目改为用户可调、默认宽松**（§5.4、§5.5）；**防止手机上其他应用 / 网页冒用这个端口的条目保留**（§5.1～§5.3、§5.6、§5.7）——它们不影响 AI 能做什么，只保证能用这个端口的只有你的 AI 客户端。
 
 ### 5.1 开关与生命周期
 - 默认关闭；只能在设置里手动开启。关闭时 `ServerSocket` 已关闭，端口不可连接，行为与 1.9.1 完全一致。
@@ -116,19 +124,21 @@ data class SessionInfo(val id: String, val customName: String, val title: String
 - `Host` 头必须是 `127.0.0.1:<端口>` / `localhost:<端口>`（局域网开启时外加本机局域网 IP），否则 403。
 - Token 在设置页可复制，剪贴板标记为敏感（同 T-007）。
 
-### 5.4 写操作确认
+### 5.4 写操作确认（用户可调）
 - 写操作 = 非 GET/HEAD 的 `http_request`、`click`、`fill`、`eval_js`。
-- 每次写操作在手机上确认，显示：工具名、标签自定义名 / 身份、目标站点、摘要（方法 + 路径、选择器、脚本前 200 字；不显示 Cookie 和请求头值）。
-- Activity 在前台时用对话框；在后台时发高优先级通知，点按进入确认界面。设备锁定时必须先解锁才能确认（锁屏上不提供「允许」按钮）。60 s 无响应视为拒绝。
-- 可选「本次会话内该站点不再询问」：作用域 = `Mcp-Session-Id` × profileName × 域名 × 工具类别；只存内存，服务停止或 Token 重置即清空。
+- 设置里三档，**默认「信任的站点免确认」**：
+  1. 每次确认；
+  2. 信任的站点免确认（默认）：授权时可勾「信任，写操作不询问」，未勾的站点仍弹确认；
+  3. 全部免确认：开启时提示一次「AI 将可以在已授权站点上提交、发帖、付款等，无需你确认」。
+- 需要确认时显示：工具名、标签自定义名 / 身份、目标站点、摘要（方法 + 路径、选择器、脚本前 200 字；不显示 Cookie 与请求头值）。Activity 在前台用对话框，在后台发高优先级通知点按进入；60 s 无响应视为拒绝。确认框里可选「该站点以后不再询问」（写入 `grants`，随时可在白名单里取消）。
 
-### 5.5 站点白名单
-- 用户逐个勾选允许 AI 访问的「身份 × 域名」（从现有标签里选，也可手填域名）。不在名单里的标签不出现在 `list_sessions`，按 id 调用也返回「未授权」。
-- 域名不得是 IP 字面量、单段名或明显的公共后缀（如 `com`、`com.cn`、`github.io`，内置一张小表，不引入 PSL 依赖）。
-- **建议（待主人定）**：`get_cookies` 额外需要每个域名单独勾选「允许读取 Cookie 值」，默认不勾。理由：`http_request` 让 AI 用登录态办事而不拿到凭据本身；而 Cookie 值一旦交出，就可能被 AI 客户端带离手机长期使用，风险高一个等级。
+### 5.5 站点授权（用户可调）
+- 授权单位是「身份（profileName）× 域名」。白名单界面提供：逐个勾选、「授权该身份全部站点」、「授权全部标签」三种粒度。未授权的不出现在 `list_sessions`，按 id 调用返回「未授权」。
+- `get_cookies` 不再需要单独授权：被授权的「身份 × 域名」即可读取全部 Cookie（含 HttpOnly）。
+- 「授权全部」时 `http_request` 的目标域名放宽为「该身份已有 Cookie 的域名及其子域」。
 
 ### 5.6 存储
-- 新建 SharedPreferences 文件 `mcp_prefs`，**不读写任何已有文件和键**。键：`enabled`、`port`、`lan_enabled`、`token_enc`、`grants`（JSON）、`max_body_bytes`、`call_log`（JSON 环形，最多 500 条）。
+- 新建 SharedPreferences 文件 `mcp_prefs`，**不读写任何已有文件和键**。键：`enabled`、`port`、`lan_enabled`、`token_enc`、`grants`（JSON，含每站「信任」标记）、`confirm_mode`、`max_body_bytes`、`call_log`（JSON 环形，最多 500 条）。
 - Token 用新 Keystore 别名 `cookiebox_mcp_key` 加密后存 `token_enc`。复用 `SecureStore` 的「别名存在就不重建」规则；别名取不出时让用户重新开启（重新生成 Token），不碰其他两个别名。
 - `mcp_prefs` 同样受 `allowBackup=false` 与 data_extraction_rules 约束：现有规则对 sharedpref / database / root / file 均为 `path="."` 全排除，新文件自动覆盖，无需改动。
 
@@ -150,7 +160,7 @@ data class SessionInfo(val id: String, val customName: String, val title: String
 ## 7. 获批后需要同步修改的规范文本
 
 获批后由架构师（或随 T-026 的 PR）修改 AGENTS.md：
-- §3 表格新增：`mcp_prefs` / `enabled`、`port`、`lan_enabled`、`token_enc`、`grants`、`max_body_bytes`、`call_log`；Keystore 别名 `cookiebox_mcp_key`（MCP Token）。
+- §3 表格新增：`mcp_prefs` / `enabled`、`port`、`lan_enabled`、`token_enc`、`grants`、`confirm_mode`、`max_body_bytes`、`call_log`；Keystore 别名 `cookiebox_mcp_key`（MCP Token）。
 - §4 第三条改为：「应用不得新增任何联网上报、统计 SDK、远程配置；除 WebView 访问用户输入的网址、以及 ADR-0004 规定的 MCP 服务（默认关闭、本机监听、逐站授权）外不发任何请求。」
 - §4 网页注入条款末尾加：「例外：ADR-0004 授权范围内，经用户授权的数据可交给持有 Token 的 MCP 客户端。」
 - docs/ARCHITECTURE.md 增加 `mcp/` 模块与第 4 节「安全边界 · 本机服务」。
@@ -168,12 +178,12 @@ data class SessionInfo(val id: String, val customName: String, val title: String
 ## 9. 后果
 
 - 正面：AI 客户端能以用户真实登录态读取数据、调用接口；默认关闭，对不用此功能的用户零影响。
-- 代价：新增一个本机攻击面（端口 + Token）；被授权站点的 Cookie 和数据可能经 AI 客户端离开手机，风险由用户逐站承担；前台服务常驻通知、少量耗电。
-- 残余风险（不防护）：root 设备或同机恶意应用窃取 Token；用户自行把 Token 交给不可信客户端；局域网模式下的明文嗅探（已提示）；AI 在用户确认后执行的写操作本身的后果。
+- 代价：新增一个本机攻击面（端口 + Token）；被授权站点的 Cookie 和数据可能经 AI 客户端离开手机；免确认档位下 AI 的写操作直接生效，后果由用户承担；前台服务常驻通知、少量耗电。
+- 残余风险（不防护）：root 设备或同机恶意应用窃取 Token；用户自行把 Token 交给不可信客户端；局域网模式下的明文嗅探（已提示）；AI 写操作本身的后果；站点服务条款对自动化访问的限制（`page` 通道行为与浏览器一致，但请求节奏由 AI 决定，频率过高仍可能触发站点风控）。
 
 ## 10. 需要主人裁决
 
 1. 是否批准本例外（§3 的范围）。
-2. §5.5 的「`get_cookies` 单独授权、默认不勾」是否采纳。
+2. ~~`get_cookies` 单独授权~~（修订 1：主人已否决，改为随站点授权）。§5.4 写确认默认档位「信任的站点免确认」是否合适。
 3. 前台服务类型用 `specialUse`（推荐）还是 `dataSync`。
 4. 任务分支是否按本次指令从 `main` 切出并 PR 到 `main`（AGENTS.md §2 原写「从集成分支切出」，`integrate/1.7` 已落后 main，建议同步修改 §2）。
