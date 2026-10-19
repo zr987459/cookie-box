@@ -2,6 +2,14 @@
 
 模板见 AGENTS.md 第 6 节。
 
+## 2026-10-20 01:50 CST · 系统架构师（Hark） · T-025（主人批准）
+- 分支 / 提交：task/T-025-mcp-adr（PR #4 追加提交）
+- 完成：主人批准 ADR-0004：例外批准、写确认默认「信任的站点免确认」、前台服务 specialUse、以后任务分支从 main 切。ADR 状态改「已采纳」并记录裁决；按 ADR §7 修订 AGENTS.md §2（基线改 main）、§3（登记 mcp_prefs 键与 cookiebox_mcp_key，标注 T-026 起）、§4（MCP 例外条款）与 docs/ARCHITECTURE.md（mcp 模块、依赖方向、本机服务边界）；TASKS.md T-025 完成、T-026～T-029 改为待办
+- 未完成 / 风险：PR #4 需主人合入 main 后，T-026 才能从 main 切分支
+- 兼容性验证：不涉及存储（仅文档）
+- 泄露自查：无新增密钥与敏感日志
+- 下一棒建议：合入 PR #4 → 开发者从 main 切 task/T-026-mcp-service，versionCode 31
+
 ## 2026-10-20 01:45 CST · 系统架构师（Hark） · T-025（修订 2）
 - 分支 / 提交：task/T-025-mcp-adr（PR #4 追加提交）
 - 完成：按 PR #4 审查意见修正技术可行性，方向不变：page 通道改为「随机 window 变量 + evaluateJavascript 轮询 + 分块取回」（addWebMessageListener 为可选优化，不用 addJavascriptInterface），GET 遇 CORS/CSP 回退 native、非 GET 不自动回退，page 正文上限单独 256 KiB；授权候选域名改为 visited_hosts（导航积累）+ 手动列表；get_cookies 只返回 name/value；Origin 改为无 Origin 放行、有 Origin 走白名单；回环地址全集 + 用已解析 IP 连接；native 不设全局 CookieHandler、手动重定向、多条 Set-Cookie 逐条写回；协议版本补 2025-11-25

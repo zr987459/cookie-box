@@ -1,11 +1,11 @@
 # ADR-0004：本机 MCP 服务（让 AI 客户端使用已登录的标签会话）
 
-- 状态：**提议中（待仓库主人批准）**
+- 状态：**已采纳**（仓库主人 2026-10-20 批准，裁决见 §10）
 - 日期：2026-10-20（修订 1：主人要求放宽对 AI 的限制、对站点表现得与浏览器本身一致；修订 2：审查意见，修正技术可行性）
 - 关联任务：T-025（本文）、T-026、T-027、T-028、T-029
 - 基线：main @ fd967e7（v1.9.1，versionCode 30）
 
-> 本 ADR 获批前，任何 MCP 功能代码都不得提交；T-026～T-029 保持「阻塞(待主人批准 ADR-0004)」。
+> 已获批（2026-10-20）。T-026～T-029 可按 TASKS.md 顺序认领；实现不得超出本 ADR 的例外范围（§3）。
 
 ## 1. 背景
 
@@ -163,7 +163,7 @@ data class SessionInfo(val id: String, val customName: String, val title: String
 - MCP 代码对 `browser_prefs` 只读，不读储存库与账号库。
 - 关闭开关时没有任何新代码路径在运行（服务未启动，端口未监听）。
 - 从 1.9.1 覆盖安装：`mcp_prefs` 不存在即视为「关闭」；标签、储存库、账号库照常加载。
-- 新增清单项：`FOREGROUND_SERVICE`、`FOREGROUND_SERVICE_SPECIAL_USE` 权限与 `<service android:foregroundServiceType="specialUse" android:exported="false">`（targetSdk 34 要求声明类型；本应用不上架 Play，specialUse 最贴切，备选 dataSync）。新增权限不影响覆盖安装。
+- 新增清单项：`FOREGROUND_SERVICE`、`FOREGROUND_SERVICE_SPECIAL_USE` 权限与 `<service android:foregroundServiceType="specialUse" android:exported="false">`（targetSdk 34 要求声明类型；主人已定用 specialUse）。新增权限不影响覆盖安装。
 - 签名不变；versionCode 只增：T-026 起 ≥ 31，之后每次发版高于所有分支当前最大值。
 
 ## 7. 获批后需要同步修改的规范文本
@@ -190,9 +190,9 @@ data class SessionInfo(val id: String, val customName: String, val title: String
 - 代价：新增一个本机攻击面（端口 + Token）；被授权站点的 Cookie 和数据可能经 AI 客户端离开手机；免确认档位下 AI 的写操作直接生效，后果由用户承担；前台服务常驻通知、少量耗电。
 - 残余风险（不防护）：root 设备或同机恶意应用窃取 Token；用户自行把 Token 交给不可信客户端；局域网模式下的明文嗅探（已提示）；AI 写操作本身的后果；站点服务条款对自动化访问的限制（`page` 通道行为与浏览器一致，但请求节奏由 AI 决定，频率过高仍可能触发站点风控）。
 
-## 10. 需要主人裁决
+## 10. 主人裁决（2026-10-20）
 
-1. 是否批准本例外（§3 的范围）。
-2. ~~`get_cookies` 单独授权~~（修订 1：主人已否决，改为随站点授权）。§5.4 写确认默认档位「信任的站点免确认」是否合适。
-3. 前台服务类型用 `specialUse`（推荐）还是 `dataSync`。
-4. 任务分支是否按本次指令从 `main` 切出并 PR 到 `main`（AGENTS.md §2 原写「从集成分支切出」，`integrate/1.7` 已落后 main，建议同步修改 §2）。
+1. **批准**本例外（§3 的范围）。
+2. `get_cookies` 不单独授权，随站点授权（修订 1）；§5.4 写确认默认档位 = **「信任的站点免确认」**。
+3. 前台服务类型 = **`specialUse`**（`<property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="local MCP server for user-authorized AI clients"/>`）。
+4. 以后所有任务分支**从 `main` 切出、PR 到 `main`**；AGENTS.md §2 已同步修改。
