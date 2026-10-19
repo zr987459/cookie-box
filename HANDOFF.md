@@ -2,6 +2,38 @@
 
 模板见 AGENTS.md 第 6 节。
 
+## 2026-10-20 01:50 CST · 系统架构师（Hark） · T-025（主人批准）
+- 分支 / 提交：task/T-025-mcp-adr（PR #4 追加提交）
+- 完成：主人批准 ADR-0004：例外批准、写确认默认「信任的站点免确认」、前台服务 specialUse、以后任务分支从 main 切。ADR 状态改「已采纳」并记录裁决；按 ADR §7 修订 AGENTS.md §2（基线改 main）、§3（登记 mcp_prefs 键与 cookiebox_mcp_key，标注 T-026 起）、§4（MCP 例外条款）与 docs/ARCHITECTURE.md（mcp 模块、依赖方向、本机服务边界）；TASKS.md T-025 完成、T-026～T-029 改为待办
+- 未完成 / 风险：PR #4 需主人合入 main 后，T-026 才能从 main 切分支
+- 兼容性验证：不涉及存储（仅文档）
+- 泄露自查：无新增密钥与敏感日志
+- 下一棒建议：合入 PR #4 → 开发者从 main 切 task/T-026-mcp-service，versionCode 31
+
+## 2026-10-20 01:45 CST · 系统架构师（Hark） · T-025（修订 2）
+- 分支 / 提交：task/T-025-mcp-adr（PR #4 追加提交）
+- 完成：按 PR #4 审查意见修正技术可行性，方向不变：page 通道改为「随机 window 变量 + evaluateJavascript 轮询 + 分块取回」（addWebMessageListener 为可选优化，不用 addJavascriptInterface），GET 遇 CORS/CSP 回退 native、非 GET 不自动回退，page 正文上限单独 256 KiB；授权候选域名改为 visited_hosts（导航积累）+ 手动列表；get_cookies 只返回 name/value；Origin 改为无 Origin 放行、有 Origin 走白名单；回环地址全集 + 用已解析 IP 连接；native 不设全局 CookieHandler、手动重定向、多条 Set-Cookie 逐条写回；协议版本补 2025-11-25
+- 未完成 / 风险：仍待主人批准 ADR-0004；按 IP 连接同时保留 SNI/证书校验在 HttpURLConnection 上实现较繁琐，T-027 实现时需重点审查
+- 兼容性验证：不涉及存储（仅文档）
+- 泄露自查：无新增密钥与敏感日志
+- 下一棒建议：主人批准后认领 T-026
+
+## 2026-10-20 01:30 CST · 系统架构师（Hark） · T-025（修订 1）
+- 分支 / 提交：task/T-025-mcp-adr（PR #4 追加提交）
+- 完成：按主人指示放宽对 AI 的限制：写确认改为三档、默认「信任的站点免确认」；授权支持整身份 / 全部；get_cookies 随站点授权；http_request 新增 page 通道（标签内 fetch，与浏览器请求无差别）并让 native 通道沿用该标签 UA / Referer、Set-Cookie 写回，对站点表现与浏览器一致；允许 http、只拒回环 IP
+- 未完成 / 风险：保留 Token、只绑 127.0.0.1、Origin/Host 校验、日志不含凭据（防同机其他应用和网页冒用端口，不限制 AI）。仍需主人批准 ADR-0004
+- 兼容性验证：不涉及存储（仅文档）
+- 泄露自查：无新增密钥与敏感日志
+- 下一棒建议：主人批准后认领 T-026
+
+## 2026-10-20 01:20 CST · 系统架构师（Hark） · T-025
+- 分支 / 提交：task/T-025-mcp-adr @ （见 PR）
+- 完成：新增 docs/adr/0004-mcp-server.md（本机 MCP 服务的红线例外提议：冲突点、例外范围、架构、工具、安全底线、对已有数据零影响、获批后的规范修订文本）；TASKS.md 新增 T-025～T-029，实现任务全部「阻塞(待主人批准 ADR-0004)」
+- 未完成 / 风险：未提交任何功能代码。需主人裁决 ADR §10 的 4 项（是否批准；get_cookies 是否单独授权；FGS 类型；分支基线由 integrate 改为 main 并同步 AGENTS.md §2）。注意 TabItem.id 每次启动重新生成，白名单按 profileName × 域名记录而非标签 id
+- 兼容性验证：不涉及存储（仅文档）
+- 泄露自查：无新增密钥与敏感日志；文档示例未使用任何真实值
+- 下一棒建议：主人批准 ADR-0004 后，开发者认领 T-026（前台服务 + 握手 + Token + 设置开关）
+
 ## 2026-10-20 01:00 CST · 开发者（Hark） · T-024
 - 分支 / 提交：task/T-024-tab-custom-name（v1.9.1，versionCode 30）
 - 完成：TabItem 新增 customName；标签行新增铅笔按钮 + 长按改名（最多 24 字，可「恢复默认」）；有自定义名时首行显示名字，第二行显示「网页标题 · 网址」；browser_prefs.session_tabs 每项新增 `label` 键；分身标签弹出的新窗口沿用名字
