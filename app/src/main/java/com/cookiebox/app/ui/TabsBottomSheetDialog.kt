@@ -17,6 +17,7 @@ class TabsBottomSheetDialog : BottomSheetDialogFragment() {
 
     var onTabSelected: ((String) -> Unit)? = null
     var onTabClosed: ((String) -> Unit)? = null
+    var onTabRenameRequested: ((String) -> Unit)? = null
     var onNewTabRequested: ((isIsolated: Boolean) -> Unit)? = null
     var onDismissListener: (() -> Unit)? = null
 
@@ -51,6 +52,9 @@ class TabsBottomSheetDialog : BottomSheetDialogFragment() {
             },
             onCloseClick = { tab ->
                 onTabClosed?.invoke(tab.id)
+            },
+            onRenameClick = { tab ->
+                onTabRenameRequested?.invoke(tab.id)
             }
         )
         adapter = newAdapter

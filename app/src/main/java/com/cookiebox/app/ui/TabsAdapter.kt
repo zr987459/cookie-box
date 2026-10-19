@@ -13,7 +13,8 @@ import com.cookiebox.app.model.TabItem
 
 class TabsAdapter(
     private val onTabClick: (TabItem) -> Unit,
-    private val onCloseClick: (TabItem) -> Unit
+    private val onCloseClick: (TabItem) -> Unit,
+    private val onRenameClick: (TabItem) -> Unit = {}
 ) : RecyclerView.Adapter<TabsAdapter.TabGroupViewHolder>() {
 
     private val allTabs = mutableListOf<TabItem>()
@@ -122,13 +123,30 @@ class TabsAdapter(
                 rowBinding.tvActiveBadge.visibility = if (isActive) View.VISIBLE else View.GONE
                 rowBinding.tvIsolatedBadge.visibility = if (tab.isClone) View.VISIBLE else View.GONE
 
-                rowBinding.tvTabTitle.text = if (tab.title.isNotBlank()) tab.title else "新标签页"
-                rowBinding.tvTabUrl.text = if (tab.url.isNotBlank()) tab.url else "about:blank"
+                val pageTitle = if (tab.title.isNotBlank()) tab.title else "新标签页"
+                val pageUrl = if (tab.url.isNotBlank()) tab.url else "about:blank"
+                if (tab.customName.isNotBlank()) {
+                    // 自定义名放首行，原网页标题挪到第二行，方便多账号一眼区分
+                    rowBinding.tvTabTitle.text = tab.customName
+                    rowBinding.tvTabUrl.text = "$pageTitle · $pageUrl"
+                } else {
+                    rowBinding.tvTabTitle.text = pageTitle
+                    rowBinding.tvTabUrl.text = pageUrl
+                }
 
                 rowBinding.topTabDivider.visibility = if (index == 0) View.GONE else View.VISIBLE
 
                 rowBinding.layoutTabRowClickable.setOnClickListener {
                     onTabClick(tab)
+                }
+
+                rowBinding.layoutTabRowClickable.setOnLongClickListener {
+                    onRenameClick(tab)
+                    true
+                }
+
+                rowBinding.btnRenameTab.setOnClickListener {
+                    onRenameClick(tab)
                 }
 
                 rowBinding.btnCloseTab.setOnClickListener {

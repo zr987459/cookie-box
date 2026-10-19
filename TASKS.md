@@ -41,6 +41,7 @@
 | T-012 | 实现导出备份（按 T-011） | 待 T-011 定 | — | T-011 | 待办 |
 | T-013 | 实现导入备份：按 id 合并，绝不覆盖本地已有记录 | 待 T-011 定 | 导入不丢本地数据 | T-012 | 待办 |
 | T-014 | 设计：Cookie 编辑与写回 WebView | `docs/adr/` | — | — | 待办 |
+| T-024 | 标签自定义名称：标签管理里点铅笔或长按改名，区分多账号；会话里新增 `label` 键持久化（旧数据缺省为空），分身标签打开的新窗口沿用名字；也为后续 MCP `list_sessions` 提供可辨认的名字 | `model/TabItem.kt`、`engine/BrowserPrefs.kt`、`ui/TabsAdapter.kt`、`ui/TabsBottomSheetDialog.kt`、`MainActivity.kt`（会话保存/恢复、重命名弹窗）、`res/layout/item_tab_row.xml`、新增 `res/drawable/ic_edit.xml` | 改名后重启仍在；1.9.0 覆盖安装旧标签照常恢复 | — | 待审(Hark) |
 
 ## 已完成
 
