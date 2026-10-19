@@ -1,7 +1,7 @@
 # ADR-0004：本机 MCP 服务（让 AI 客户端使用已登录的标签会话）
 
 - 状态：**提议中（待仓库主人批准）**
-- 日期：2026-10-20（修订 1：主人要求放宽对 AI 的限制、对站点表现得与浏览器本身一致）
+- 日期：2026-10-20（修订 1：主人要求放宽对 AI 的限制、对站点表现得与浏览器本身一致；修订 2：审查意见，修正技术可行性）
 - 关联任务：T-025（本文）、T-026、T-027、T-028、T-029
 - 基线：main @ fd967e7（v1.9.1，versionCode 30）
 
@@ -55,7 +55,7 @@ app/src/main/java/com/cookiebox/app/mcp/
 ### 4.1 传输（Streamable HTTP）
 - 单一端点 `POST /mcp`，请求体为 JSON-RPC 2.0；响应 `Content-Type: application/json`（不实现 SSE 流，规范允许）。
 - `GET /mcp` 返回 405；通知（无 `id`）返回 202 空正文；`DELETE /mcp` 结束会话。
-- `initialize` 时生成 `Mcp-Session-Id`（随机，内存保存，服务停止即失效）；协议版本按客户端请求协商，支持列表实现时以 modelcontextprotocol.io 当时的正式版为准（至少 2025-03-26、2025-06-18）。
+- `initialize` 时生成 `Mcp-Session-Id`（随机，内存保存，服务停止即失效）；协议版本按客户端请求协商，支持 2025-03-26、2025-06-18、2025-11-25（客户端请求的版本在列表内则原样回应，否则回应列表中最新版）；之后的请求校验 `MCP-Protocol-Version` 头，缺省按 2025-03-26 处理。
 - `serverInfo.name = "cookiebox"`，`capabilities = { tools: {} }`。
 - HTTP 实现要点（防止常见坑）：按**字节**读取 `Content-Length`（中文正文不能按字符读）；请求体上限 1 MiB、请求头上限 16 KiB、读超时 15 s、并发连接上限 4；不支持 `Transfer-Encoding: chunked` 请求时返回 411/400 而不是挂起。
 
@@ -80,27 +80,35 @@ data class SessionInfo(val id: String, val customName: String, val title: String
 | 工具 | 参数 | 返回 | 读/写 |
 |---|---|---|---|
 | `list_sessions` | 无 | 每个已授权标签：`id`、`customName`、`title`、`host`、`isClone`、`profileName`、该身份已授权域名列表。**不返回 Cookie。** | 读 |
-| `get_cookies` | `session_id`, `domain` | 该身份下该域名的 Cookie（名、值；能取到的属性，含 HttpOnly）。`domain` 必须属于已授权域名。 | 读 |
+| `get_cookies` | `session_id`, `domain` 或 `url` | `[{name, value}]`。取自该 Profile 的 `CookieManager.getCookie(url)`（只给 `name=value; …`），内容包括 HttpOnly Cookie，但**不提供** domain / path / expires / HttpOnly 等属性。只传 `domain` 时按 `https://<domain>/` 取，路径受限的 Cookie 需传具体 `url`。目标必须属于已授权域名。 | 读 |
 | `http_request` | `session_id`, `url`, `method`, `headers?`, `body?`, `mode?`(`auto`/`page`/`native`) | 状态码、响应头、正文（按 `max_body_bytes` 截断并标注 `truncated`），文本按 charset 解码，二进制返回 Base64 | GET/HEAD = 读；其他 = 写 |
 
 `http_request` 细则（修订 1：对站点与该标签的浏览器行为保持一致）：
 
 两种发送通道，`mode=auto` 时自动选择：
-- **`page` 通道（标签已加载且目标与页面同源 / 站点允许跨域时优先）**：在该标签页面上下文里执行 `fetch(url, {credentials:'include'})`，结果经 `evaluateJavascript` 回调取回。请求由 WebView 自己的网络栈发出，TLS / HTTP2 指纹、Cookie、`Sec-Fetch-*`、`Origin`、`Referer`、UA 与页面里的正常请求完全相同，站点看不出差别；`Set-Cookie` 由 WebView 自然处理。受浏览器 CORS 与禁用请求头规则约束。
-- **`native` 通道（标签未加载、跨域被拒或二进制大响应时）**：后台线程用 `HttpURLConnection` 发送，不需要 WebView 打开。为与该标签保持一致：
+- **`page` 通道（标签已加载且目标与页面同源 / 站点允许跨域时优先）**：在该标签页面上下文里执行 `fetch(url, {credentials:'include'})`。请求由 WebView 自己的网络栈发出，TLS / HTTP2 指纹、Cookie、`Sec-Fetch-*`、`Origin`、`Referer`、UA 与页面里的正常请求完全相同；`Set-Cookie` 由 WebView 自然处理。受浏览器 CORS、CSP 与禁用请求头规则约束。
+  - **取结果的机制**（`evaluateJavascript` 不等待 Promise，直接返回只会得到 `"{}"`）：主线程生成随机变量名 `k = "__cb_" + 16 字节随机十六进制`，注入一段**立即返回**的脚本：启动 `fetch`，在 `then/catch` 里把 `{state:'done'|'error', status, headers, bodyB64, truncated, error}` 写入 `window[k]`（初始为 `{state:'pending'}`），响应体读取时按 `page_max_body_bytes` 截断，二进制统一 Base64。随后每 100 ms 用 `evaluateJavascript("JSON.stringify(window[k] && window[k].state)")` 轮询，完成后按 256 KiB 分块取回 `bodyB64`（`window[k].bodyB64.substr(off, len)`），取完立即 `delete window[k]`。总超时 30 s；超时、标签被关闭或页面在等待期间导航（变量随文档丢失）都视为失败。
+  - 备选机制：创建 WebView 时用 `WebViewCompat.addWebMessageListener` 注册限定 origin 的监听对象，脚本完成后 `postMessage` 回传。它只对注册**之后**的导航生效，已打开的页面需重新加载，且要求 WebView 支持 `WEB_MESSAGE_LISTENER`；因此作为可选优化，默认用上面的轮询方案。**不得使用 `addJavascriptInterface`。**
+  - 变量名每次随机、用完删除，页面脚本可以看到它但猜不到下一次的名字；回传内容只是本次 fetch 的结果，不涉及页面其他数据。
+  - **回退**：`mode=auto` 时，若 fetch 被拒（CORS 失败或 CSP `connect-src` 拦截都表现为 `TypeError`；脚本同时监听 `securitypolicyviolation` 以在结果里区分原因），或响应超过 `page_max_body_bytes`，GET / HEAD 自动改走 `native` 通道重发，返回值标注 `channel:"native"` 与回退原因。`mode=page` 时不回退，直接返回错误。
+  - **非 GET 请求不自动回退**：CORS「简单请求」（如表单 POST）不发预检，浏览器会先把请求发到站点、只是不让脚本读响应，此时写操作可能已经生效；自动重发会造成重复提交。因此非 GET 在 page 通道失败时返回错误（附原因），由调用方决定是否以 `mode=native` 重试。
+  - `page_max_body_bytes` 默认 256 KiB（上限 2 MiB），单独小于 native 通道的上限，避免大字符串在 JS 与 Java 之间反复拷贝。
+- **`native` 通道（标签未加载、page 通道回退或二进制大响应时）**：后台线程用 `HttpURLConnection` 发送，不需要 WebView 打开。为与该标签保持一致：
+  - 进程内不设置全局 `CookieHandler`（当前 main 没有任何 `CookieHandler.setDefault` 调用）；native 通道每次发送前检查 `CookieHandler.getDefault() == null`，非空则报错，不去改动全局状态。`Cookie` 头完全由我们手动设置。
   - Cookie 取自该 Profile 的 `CookieManager.getCookie(url)`（主线程取）。
   - `User-Agent` 用该标签 WebView 实际的 UA（区分电脑版模式），`Accept-Language` 与 WebView 一致；`Referer` 默认取该标签当前页面；调用方传入的请求头覆盖默认值（`Host`、`Cookie` 除外，`Cookie` 始终来自该身份）。
-  - 响应的 `Set-Cookie` **写回**该 Profile 的 CookieManager 并 `flush()`，让站点轮换的会话凭据与 WebView 保持同步，避免同一账号出现两套不一致的会话状态而掉线。
-  - 已知差异：TLS / HTTP2 指纹与 Chromium 不同，对指纹很敏感的站点优先用 `page` 通道。
+  - `setInstanceFollowRedirects(false)`，重定向手动跟随（规则见下）。
+  - 响应的多个 `Set-Cookie` 头从 `headerFields["Set-Cookie"]`（大小写不敏感）逐条取出，每条用 `setCookie(<本跳请求 URL>, <整条头值>)` 写回该 Profile 的 CookieManager（属性由 CookieManager 自己解析，HttpOnly / Secure / Domain / Path 生效），每一跳写回后再取下一跳的 Cookie，全部结束后 `flush()`。让站点轮换的会话凭据与 WebView 保持同步，避免掉线。
+  - 已知差异：TLS / HTTP2 指纹与 Chromium 不同（仓库 `CookieKeepAliveEngine` 注释里已记录这一点），对指纹很敏感的站点优先用 `page` 通道。
 - 同一「身份 × 域名」的请求串行发送（与 WebView 的连接复用一致，也避免突发并发）。
-- 允许 `http://` 与 `https://`；目标主机必须等于或是已授权域名的子域。重定向逐跳跟随（最多 10 跳），每跳重新取 Cookie；跳出授权域名时停止并原样返回 3xx。
-- 解析后的 IP 若为回环地址则拒绝（防止借域名打回本机 MCP 端口）；其他地址不限制。
-- 正文默认截断上限 1 MiB，可在设置里调整（上限 8 MiB）。
+- 允许 `http://` 与 `https://`；目标主机必须等于或是已授权域名的子域。native 通道重定向逐跳手动跟随（最多 10 跳，301/302/303 按浏览器规则改 GET 并丢弃正文，307/308 保持方法与正文），每跳重新校验域名、写回 Set-Cookie、重新取 Cookie；跳出授权域名时停止并原样返回 3xx。page 通道的重定向由浏览器处理（`redirect:'follow'`），结果里报告最终 URL，最终 URL 不在授权域名内则丢弃正文并报错。
+- **回环地址拦截**（防止借域名打回本机 MCP 端口）：拒绝 `127.0.0.0/8`、`::1`、`0.0.0.0`、`::`（未指定地址）、IPv4 映射的 `::ffff:127.0.0.0/104` 与 `::ffff:0.0.0.0`。native 通道先用 `InetAddress.getAllByName` 解析，任一结果命中即拒绝；然后**用已校验的 IP 建立连接**（URL 主机仍为原域名以保留 `Host` 与 TLS SNI / 证书校验，经自定义 `Dns`/`SocketFactory` 或按 IP 连接 + `HostnameVerifier` 校验原域名实现），防止校验与连接之间的 DNS 重绑定。每一跳重定向都重新解析和校验。page 通道无法控制解析，靠 §5.3 的 Host 校验 + Token 防护本机端口。其他地址不限制。
+- native 通道正文默认截断上限 1 MiB，可在设置里调整（上限 8 MiB）；page 通道见上。
 
 第二批（T-029，页面操作，写操作需确认）：`open_url`、`get_page_text`、`screenshot`（读）；`click(selector)`、`fill(selector, text)`、`eval_js(code)`（写）。
 - 「等待加载完成」：以 `onPageFinished` + `document.readyState === 'complete'` + 进度 100 为准，带超时；标签处于 `pendingUrl` 状态时先触发加载再等待。
 - 注入走 T-016 的统一判定入口，但对 MCP 调用默认放行；`fill` 可以填写密码框（AI 的值来自调用方，不读取账号库）。
-- 不新增 `addJavascriptInterface`；结果经 `evaluateJavascript` 回调取得。
+- 不新增 `addJavascriptInterface`。同步结果直接取 `evaluateJavascript` 回调；`eval_js` 的代码若返回 Promise，或 `click` / `fill` 需要等待后续变化，统一复用 page 通道的「随机 window 变量 + 轮询 + 分块取回」机制。
 - 页面内容可能包含针对 AI 的「提示注入」；工具返回的页面文本附带来源说明，写操作是否确认由 §5.4 的用户设置决定。
 
 ## 5. 安全底线
@@ -120,7 +128,7 @@ data class SessionInfo(val id: String, val customName: String, val title: String
 ### 5.3 认证与来源校验
 - 每次开启生成 32 字节随机 Token（`SecureRandom`，Base64URL），可在设置里「重置」，重置后旧 Token 立即失效。
 - 无 Token 或错误 Token 一律 401；比较用常量时间；同一来源 1 分钟内失败 10 次进入 60 s 冷却。
-- 带 `Origin` 头的请求一律 403（浏览器网页发出的请求必带 Origin，原生 MCP 客户端不带），防 DNS rebinding 与网页跨站调用。
+- `Origin` 校验（防 DNS rebinding 与网页跨站调用）：无 `Origin` 头（原生 MCP 客户端）放行；有 `Origin` 头时默认 403，除非它在设置里的「Origin 白名单」中（精确匹配 scheme + host + port，例如 MCP Inspector 的 `http://localhost:6274`，或 Electron 客户端的 `file://` / 自定义 scheme；白名单默认为空）。命中白名单的请求回 `Access-Control-Allow-Origin: <该 Origin>` 并处理 `OPTIONS` 预检。
 - `Host` 头必须是 `127.0.0.1:<端口>` / `localhost:<端口>`（局域网开启时外加本机局域网 IP），否则 403。
 - Token 在设置页可复制，剪贴板标记为敏感（同 T-007）。
 
@@ -134,11 +142,12 @@ data class SessionInfo(val id: String, val customName: String, val title: String
 
 ### 5.5 站点授权（用户可调）
 - 授权单位是「身份（profileName）× 域名」。白名单界面提供：逐个勾选、「授权该身份全部站点」、「授权全部标签」三种粒度。未授权的不出现在 `list_sessions`，按 id 调用返回「未授权」。
+- **候选域名来源**：Android `CookieManager` 无法列举有 Cookie 的域名，只能按 URL 取。因此 MCP 服务开启后，由 `TabRegistry` 在标签主框架导航完成时把注册域名（去掉 `www.` 等前缀后的 host）按 profileName 记入 `mcp_prefs.visited_hosts`（每身份最多 200 个，按最近使用淘汰），启动时再补入当前所有标签 URL 的 host；加上用户手动添加的域名。服务关闭期间不记录。
 - `get_cookies` 不再需要单独授权：被授权的「身份 × 域名」即可读取全部 Cookie（含 HttpOnly）。
-- 「授权全部」时 `http_request` 的目标域名放宽为「该身份已有 Cookie 的域名及其子域」。
+- 「授权该身份全部站点 / 授权全部标签」= 授权该身份 `visited_hosts` 中的全部域名 + 用户手动列表，以及之后新访问到的域名（自动纳入）；目标必须等于或是其中某个域名的子域。
 
 ### 5.6 存储
-- 新建 SharedPreferences 文件 `mcp_prefs`，**不读写任何已有文件和键**。键：`enabled`、`port`、`lan_enabled`、`token_enc`、`grants`（JSON，含每站「信任」标记）、`confirm_mode`、`max_body_bytes`、`call_log`（JSON 环形，最多 500 条）。
+- 新建 SharedPreferences 文件 `mcp_prefs`，**不读写任何已有文件和键**。键：`enabled`、`port`、`lan_enabled`、`token_enc`、`grants`（JSON，含每站「信任」标记）、`confirm_mode`、`max_body_bytes`、`page_max_body_bytes`、`visited_hosts`（JSON，按 profileName 分组）、`origin_allowlist`、`call_log`（JSON 环形，最多 500 条）。
 - Token 用新 Keystore 别名 `cookiebox_mcp_key` 加密后存 `token_enc`。复用 `SecureStore` 的「别名存在就不重建」规则；别名取不出时让用户重新开启（重新生成 Token），不碰其他两个别名。
 - `mcp_prefs` 同样受 `allowBackup=false` 与 data_extraction_rules 约束：现有规则对 sharedpref / database / root / file 均为 `path="."` 全排除，新文件自动覆盖，无需改动。
 
@@ -160,7 +169,7 @@ data class SessionInfo(val id: String, val customName: String, val title: String
 ## 7. 获批后需要同步修改的规范文本
 
 获批后由架构师（或随 T-026 的 PR）修改 AGENTS.md：
-- §3 表格新增：`mcp_prefs` / `enabled`、`port`、`lan_enabled`、`token_enc`、`grants`、`confirm_mode`、`max_body_bytes`、`call_log`；Keystore 别名 `cookiebox_mcp_key`（MCP Token）。
+- §3 表格新增：`mcp_prefs` / `enabled`、`port`、`lan_enabled`、`token_enc`、`grants`、`confirm_mode`、`max_body_bytes`、`page_max_body_bytes`、`visited_hosts`、`origin_allowlist`、`call_log`；Keystore 别名 `cookiebox_mcp_key`（MCP Token）。
 - §4 第三条改为：「应用不得新增任何联网上报、统计 SDK、远程配置；除 WebView 访问用户输入的网址、以及 ADR-0004 规定的 MCP 服务（默认关闭、本机监听、逐站授权）外不发任何请求。」
 - §4 网页注入条款末尾加：「例外：ADR-0004 授权范围内，经用户授权的数据可交给持有 Token 的 MCP 客户端。」
 - docs/ARCHITECTURE.md 增加 `mcp/` 模块与第 4 节「安全边界 · 本机服务」。
