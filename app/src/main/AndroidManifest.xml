@@ -57,6 +57,12 @@
             android:exported="false"
             android:label="AI 访问（MCP）" />
 
+        <!-- AI 访问（MCP）站点授权 -->
+        <activity
+            android:name=".mcp.McpGrantsActivity"
+            android:exported="false"
+            android:label="站点授权" />
+
         <!-- 本机 MCP 服务：只监听 127.0.0.1（局域网为独立开关），不对其他应用导出 -->
         <service
             android:name=".mcp.McpService"

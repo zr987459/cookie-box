@@ -2,6 +2,21 @@
 
 模板见 AGENTS.md 第 6 节。
 
+## 2026-10-20 05:40 CST · 开发者（Hark） · T-027
+- 分支 / 提交：task/T-027-mcp-readonly-tools（从 main @ 5b0e383 切出；v1.11.0，versionCode 32）
+- 完成：
+  - `mcp/TabRegistry.kt`（McpTabs：只读快照 SessionInfo、主线程句柄 TabHandle / TabAccess、evalJs；Activity 不在时退化为 browser_prefs 只读会话，id 为 saved-N）、`mcp/MainThreadRunner.kt`（主线程同步执行 / 异步回调等待，带超时）
+  - `mcp/McpGrants.kt`：grants JSON（all / profiles.{all, manual, domains.{trust}}）、visited_hosts（按身份，注册域名，最多 200，服务关闭时不记录，服务启动时补入当前标签）、子域匹配
+  - `mcp/tools/ListSessions.kt`：只列有授权的身份；标签当前站点未授权时不返回标题与网址；不含 Cookie
+  - `mcp/tools/GetCookies.kt`：url 或 domain，只返回 {name, value}
+  - `mcp/tools/HttpRequest.kt`：page 通道（随机 window 变量 + 100 ms 轮询 + 256 KiB 分块取回，无 addJavascriptInterface，securitypolicyviolation 区分 CSP），auto 时 GET/HEAD 失败或超过 page_max_body_bytes 回退 native；native 通道（不设全局 CookieHandler 且发现非空即报错、手动 Cookie、标签 UA / Accept-Language / strict-origin-when-cross-origin Referer、手动重定向最多 10 跳且每跳校验授权、Set-Cookie 逐条写回该身份并 flush、回环全集拦截：http 按已解析 IP 连接 + Host 头，https 保留域名做 SNI / 证书校验并在 TLS 前核对实际连接 IP；走系统代理时只做解析校验）；同一身份 × 域名串行；正文按两通道上限截断
+  - `mcp/McpGrantsActivity.kt`：授权全部标签 / 授权该身份全部站点 / 逐个勾选，手动添加域名（长按移除），清除全部授权
+  - McpPrefs 新增 grants、visited_hosts、max_body_bytes（默认 1 MiB，上限 8 MiB）、page_max_body_bytes（默认 256 KiB，上限 2 MiB）；设置页加「站点授权」入口与摘要；MainActivity 只加 3 行（attach / detach / onPageFinished 记录访问）
+- 未完成 / 风险：非 GET/HEAD 按 TASKS 约定在 T-028 前一律拒绝；截断上限暂无设置界面（键已就绪）；trust 标记已落盘但 UI 留给 T-028；http 直连按 IP + Host 头依赖 Android HttpURLConnection 允许覆盖 Host（真机需验证虚拟主机站点）
+- 兼容性验证：未编译、未真机验证（以 CI 为准）。只在 mcp_prefs 新增键；对 browser_prefs 只读；不读储存库 / 账号库；关闭开关时 visited_hosts 不记录，其余新代码不运行
+- 泄露自查：日志只含异常类型名；错误消息不含 Cookie / 正文 / 请求头值；仓库内无真实凭据
+- 下一棒建议：真机验收（未授权时 list_sessions 为空；授权后 get_cookies 含 HttpOnly；http_request 同源走 page、跨域 GET 回退 native 并能续期 Set-Cookie；redirect 到未授权域停止；访问 http://localhost 类域名被拒）→ 合入后认领 T-028
+
 ## 2026-10-20 02:20 CST · 开发者（Hark） · T-026
 - 分支 / 提交：task/T-026-mcp-service（从 main @ 78ea455 切出；v1.10.0，versionCode 31）
 - 完成：新增 `mcp/` 包：McpService（specialUse 前台服务，常驻通知「AI 访问已开启」，点按即关闭）、McpHttpServer（手写 ServerSocket，头 16 KiB / 体 1 MiB / 读超时 15 s / 总时限 20 s / 并发 4，按字节读 Content-Length，支持 Expect: 100-continue，chunked 返回 411）、McpGateway（路径 → Host → Origin 白名单 → CORS 预检 → 失败冷却 → Bearer Token）、McpAuth、McpProtocol（initialize / ping / tools/list / tools/call / 通知 202 / GET 405 / DELETE 结束会话，协议版本 2025-11-25 / 2025-06-18 / 2025-03-26，Mcp-Session-Id）、McpPrefs（mcp_prefs）、McpTokenStore（Keystore 新别名 cookiebox_mcp_key）、McpToolRegistry（T-026 为空）、McpSettingsActivity（总开关、地址、Token 显示 / 复制 / 重置、复制客户端配置、端口、局域网开关含风险提示、Origin 白名单）；MainActivity 只加菜单项「AI 访问（MCP）」；Manifest 加 FOREGROUND_SERVICE / FOREGROUND_SERVICE_SPECIAL_USE、service 与设置页声明

@@ -58,6 +58,9 @@ class McpSettingsActivity : AppCompatActivity() {
         }
         binding.btnResetToken.setOnClickListener { confirmResetToken() }
         binding.btnCopyConfig.setOnClickListener { copyClientConfig() }
+        binding.btnGrants.setOnClickListener {
+            startActivity(android.content.Intent(this, McpGrantsActivity::class.java))
+        }
 
         binding.btnSavePort.setOnClickListener { savePort() }
 
@@ -130,6 +133,8 @@ class McpSettingsActivity : AppCompatActivity() {
         if (prefs.lanEnabled) lanIpv4().forEach { endpoints.add("http://$it:$port${McpGateway.PATH}") }
         binding.tvEndpoint.text = endpoints.joinToString("\n")
 
+        binding.tvGrantsSummary.text = grantsSummary()
+
         val token = McpTokenStore.current(this)
         binding.tvToken.text = when {
             !(enabled || running) || token == null -> "开启后生成"
@@ -143,6 +148,13 @@ class McpSettingsActivity : AppCompatActivity() {
         binding.btnResetToken.isEnabled = hasToken
         binding.btnCopyConfig.isEnabled = hasToken
         updatingUi = false
+    }
+
+    private fun grantsSummary(): String {
+        if (McpGrants.allTabs(this)) return "已授权全部标签"
+        val profiles = McpGrants.knownProfiles(this)
+        val total = profiles.sumOf { McpGrants.authorizedDomains(this, it).size }
+        return if (total == 0) "尚未授权任何站点，AI 看不到任何标签" else "已授权 $total 个站点"
     }
 
     private fun confirmResetToken() {

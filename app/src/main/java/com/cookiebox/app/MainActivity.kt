@@ -162,6 +162,8 @@ class MainActivity : AppCompatActivity() {
         setContentView(binding.root)
         prefs = BrowserPrefs(this)
         vault = AccountVault(this)
+        // AI 访问（MCP）：只注册只读标签快照，逻辑全在 mcp 包
+        com.cookiebox.app.mcp.McpTabs.attach(this) { tabs.toList() }
 
         restoreSessionOrCreateTab()
 
@@ -446,6 +448,7 @@ class MainActivity : AppCompatActivity() {
                     if (newTab.id == activeTabId) {
                         updateSecurityIcon(it)
                     }
+                    com.cookiebox.app.mcp.McpTabs.onPageFinished(newTab.profileName, it)
                 }
                 unlockZoom(view)
                 if (newTab.isDesktop) applyDesktopViewport(view)
@@ -1654,6 +1657,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        com.cookiebox.app.mcp.McpTabs.detach(this)
         tabs.forEach { it.webView?.destroy() }
         tabs.clear()
         super.onDestroy()
