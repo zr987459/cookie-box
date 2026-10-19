@@ -11,6 +11,9 @@
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- Android 13+ 显示下载进度通知 -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- AI 访问（MCP，ADR-0004）：默认关闭，用户手动开启时以前台服务监听本机端口 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
     <application
         android:allowBackup="false"
@@ -47,6 +50,15 @@
                 <data android:mimeType="text/plain" />
             </intent-filter>
         </activity>
+
+        <service
+            android:name=".mcp.McpService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="User-enabled local MCP server on 127.0.0.1 that lets the user's own AI client use their logged-in browser sessions" />
+        </service>
     </application>
 
 </manifest>

@@ -55,6 +55,12 @@ import com.cookiebox.app.engine.WebTranslator
 import com.cookiebox.app.model.SavedCookieRecord
 import com.cookiebox.app.model.TabItem
 import com.cookiebox.app.model.AccountCredential
+import com.cookiebox.app.mcp.McpPrefs
+import com.cookiebox.app.mcp.McpService
+import com.cookiebox.app.mcp.McpSettingsDialog
+import com.cookiebox.app.mcp.SessionInfo
+import com.cookiebox.app.mcp.TabRegistry
+import com.cookiebox.app.mcp.TabRegistryHolder
 import com.cookiebox.app.ui.AccountsBottomSheetDialog
 import com.cookiebox.app.ui.CookieBottomSheetDialog
 import com.cookiebox.app.ui.StorageBottomSheetDialog
@@ -84,6 +90,26 @@ class MainActivity : AppCompatActivity() {
     private var defaultMobileUa: String = ""
 
     private var tabsDialog: TabsBottomSheetDialog? = null
+
+    /** 给 MCP 服务的只读标签快照（ADR-0004 §4.2）；只在主线程被调用。 */
+    private val mcpRegistry = object : TabRegistry {
+        override fun snapshot(): List<SessionInfo> = tabs.map { t ->
+            val liveUrl = t.webView?.url?.takeIf { it != "about:blank" }
+            SessionInfo(
+                id = t.id,
+                customName = t.customName,
+                title = t.title,
+                url = t.pendingUrl ?: liveUrl ?: t.url,
+                isClone = t.isClone,
+                profileName = t.profileName,
+                isDesktop = t.isDesktop,
+                live = t.webView != null && t.pendingUrl == null && liveUrl != null
+            )
+        }
+
+        override fun webViewFor(sessionId: String): WebView? =
+            tabs.firstOrNull { it.id == sessionId && it.pendingUrl == null }?.webView
+    }
 
     // 文件上传
     private var filePathCallback: ValueCallback<Array<Uri>>? = null
@@ -169,6 +195,9 @@ class MainActivity : AppCompatActivity() {
         renderShortcuts()
         setupBackNavigation()
         handleIncomingIntent(intent)
+
+        TabRegistryHolder.register(mcpRegistry)
+        if (McpPrefs.isEnabled(this)) McpService.start(this)
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -451,6 +480,7 @@ class MainActivity : AppCompatActivity() {
                 if (newTab.isDesktop) applyDesktopViewport(view)
                 checkLoginForm(newTab)
                 if (newTab.id == activeTabId) updateNavButtons()
+                McpPrefs.recordVisit(this@MainActivity, newTab.profileName, url)
             }
 
             override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
@@ -990,6 +1020,7 @@ class MainActivity : AppCompatActivity() {
         m.add(0, 12, 11, "清除当前身份的 Cookie 和缓存")
         m.add(0, 13, 1, "账号管理（账号密码）")
         if (hasPage) m.add(0, 14, 2, "保存本页填写的账号密码")
+        m.add(0, 15, 12, if (McpService.isRunning) "AI 访问（MCP）· 已开启" else "AI 访问（MCP）")
 
         popup.setOnMenuItemClickListener { item ->
             val wv = tab?.webView
@@ -1019,6 +1050,7 @@ class MainActivity : AppCompatActivity() {
                 12 -> showClearCookiesDialog()
                 13 -> openAccountsDialog()
                 14 -> tab?.let { saveCurrentPageLogin(it) }
+                15 -> McpSettingsDialog.show(this)
             }
             true
         }
@@ -1652,6 +1684,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        TabRegistryHolder.unregister(mcpRegistry)
         tabs.forEach { it.webView?.destroy() }
         tabs.clear()
         super.onDestroy()

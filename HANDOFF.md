@@ -2,6 +2,14 @@
 
 模板见 AGENTS.md 第 6 节。
 
+## 2026-10-20 02:30 CST · 开发者（Hark） · T-026 + T-027
+- 分支 / 提交：task/T-026-T-027-mcp（主人要求尽快出可测安装包，两个任务合在一个分支 / 一个 PR，提交内按模块区分）
+- 完成：新增 `mcp/`：前台服务 McpService（specialUse，默认关闭，通知点按即关）、手写 HTTP/1.1 McpHttpServer（头 ≤16 KiB、体 ≤1 MiB、15 s 超时、4 线程、chunked 回 411）、McpProtocol（initialize / ping / tools/list / tools/call，协议 2025-03-26 / 2025-06-18 / 2025-11-25，Mcp-Session-Id，只回 JSON 不开 SSE）、McpAuth（Host 白名单、Origin 白名单、Bearer 常量时间比较、1 分钟 10 次失败冷却 60 s）、McpTokenStore（32 字节 Base64URL，新别名 `cookiebox_mcp_key` 加密存 `mcp_prefs.token_enc`）、McpPrefs、TabRegistry + MainThreadRunner、三个工具 list_sessions / get_cookies / http_request（page 通道：随机 window 变量 + 100 ms 轮询 + 256 KiB 分块取回；GET/HEAD 遇 CORS/CSP/超限回退 native；native：不设全局 CookieHandler、手动逐跳重定向 ≤10、每跳校验授权与回环、多条 Set-Cookie 逐条写回该 Profile 并 flush）、设置弹窗与站点授权弹窗（逐个 / 整身份 / 全部，手动添加域名）。MainActivity 只加：注册 TabRegistry、菜单入口、onPageFinished 记录候选域名、开关为开时启动服务。versionCode 31 / 1.10.0
+- 未完成 / 风险：①非 GET/HEAD 一律拒绝，等 T-028；②native 通道「用已解析 IP 建连」未实现，目前是建连前解析校验回环（每跳都校验），存在理论上的 DNS 重绑定窗口；即使命中也只会打到本机 MCP 端口，而它要求 Host 为 127.0.0.1/localhost 且需 Token，故影响有限，T-027 审查时决定是否补；③session_id 为本进程标签 id，应用重启后失效；④Activity 不在时 list_sessions 退化为已保存会话（只读），page 通道不可用；⑤未编译、未真机验证，以 CI 结果为准
+- 兼容性验证：未编译、未真机验证；只新增 `mcp_prefs` 文件与 `cookiebox_mcp_key` 别名，不读写任何已有键；开关默认关，关闭时服务不启动、端口不监听
+- 泄露自查：无新增密钥；代码不打印 Cookie / Token / 请求头值 / 正文；Token 复制到剪贴板标记为敏感
+- 下一棒建议：真机验证（开启 → curl initialize / tools/list → 授权一个站点 → get_cookies / http_request），再认领 T-028
+
 ## 2026-10-20 01:50 CST · 系统架构师（Hark） · T-025（主人批准）
 - 分支 / 提交：task/T-025-mcp-adr（PR #4 追加提交）
 - 完成：主人批准 ADR-0004：例外批准、写确认默认「信任的站点免确认」、前台服务 specialUse、以后任务分支从 main 切。ADR 状态改「已采纳」并记录裁决；按 ADR §7 修订 AGENTS.md §2（基线改 main）、§3（登记 mcp_prefs 键与 cookiebox_mcp_key，标注 T-026 起）、§4（MCP 例外条款）与 docs/ARCHITECTURE.md（mcp 模块、依赖方向、本机服务边界）；TASKS.md T-025 完成、T-026～T-029 改为待办
