@@ -25,13 +25,13 @@ app/src/main/java/com/cookiebox/app/
 │   ├── CookieKeepAliveEngine      用 WebView 低频访问首页为 Cookie 保鲜
 │   ├── BrowserPrefs               浏览设置与标签会话
 │   ├── FileDownloader / WebTranslator / DomainUtils
-├── mcp/                     （T-026 起）本机 MCP 服务：McpService 前台服务、HTTP/JSON-RPC、Token/Origin 校验、TabRegistry 窄接口、工具实现（ADR-0004）
+├── mcp/                     本机 MCP 服务（ADR-0004，默认关闭）：前台服务 + Streamable HTTP + 工具
 └── model/                   数据类（SavedCookieRecord、AccountCredential、TabItem…）
 app/src/test/                （规划）JVM 单元测试，T-005b
 docs/adr/                    架构决策记录
 ```
 
-依赖方向：`ui` / `MainActivity` → `engine` → `model`。`engine` 不得引用 `ui`。`MainActivity` → `mcp`（仅注册 TabRegistry 与设置入口）；`mcp` → `engine` / `model`；`mcp` 不引用 `ui`，`engine` 不引用 `mcp`。
+依赖方向：`ui` / `MainActivity` → `engine` → `model`。`engine` 不得引用 `ui`。
 
 ## 3. 本地存储
 
@@ -55,7 +55,7 @@ docs/adr/                    架构决策记录
 - 网页边界：`CookieBoxDl` 下载桥当前对所有页面全局可见（一次性 token 防滥用，T-015 收紧）；视口 / 缩放 / 翻译 / 自动填充 / 下载五类注入各自判断敏感页，T-016 统一。
 - 网络：`usesCleartextTraffic=true`，T-017 评估收紧。
 - 分发：签名证书决定谁能覆盖安装并读取本地数据，当前证书已公开（T-003）。
-- 本机服务（ADR-0004，T-026 起）：MCP 服务默认关闭；开启后只监听 127.0.0.1（局域网为独立开关），Bearer Token + Origin 白名单 + Host 校验；AI 只能访问用户授权的「身份 × 域名」，写操作按确认档位（默认信任站点免确认）。
+- 本机服务（ADR-0004）：MCP 默认关闭；开启后前台服务监听 `127.0.0.1`（局域网需另开），Bearer Token + Host/Origin 校验 + 失败限流；AI 只能看到用户授权的「身份 × 域名」；日志与调用记录不含 Cookie、Token、请求头值和正文。
 
 ## 5. 构建与发布
 GitHub Actions `build-apk.yml`：JDK 17，`assembleDebug`，产物上传 Artifact 并发布到 Releases（非 main 为预发布）。T-004 将改为任务 / 集成分支只编译、main 和 tag 才发布，并加入密钥扫描。

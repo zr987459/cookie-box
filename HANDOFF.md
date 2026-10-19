@@ -2,13 +2,13 @@
 
 模板见 AGENTS.md 第 6 节。
 
-## 2026-10-20 01:50 CST · 系统架构师（Hark） · T-025（主人批准）
+## 2026-10-20 01:50 CST · 系统架构师（Hark） · T-025（采纳）
 - 分支 / 提交：task/T-025-mcp-adr（PR #4 追加提交）
-- 完成：主人批准 ADR-0004：例外批准、写确认默认「信任的站点免确认」、前台服务 specialUse、以后任务分支从 main 切。ADR 状态改「已采纳」并记录裁决；按 ADR §7 修订 AGENTS.md §2（基线改 main）、§3（登记 mcp_prefs 键与 cookiebox_mcp_key，标注 T-026 起）、§4（MCP 例外条款）与 docs/ARCHITECTURE.md（mcp 模块、依赖方向、本机服务边界）；TASKS.md T-025 完成、T-026～T-029 改为待办
-- 未完成 / 风险：PR #4 需主人合入 main 后，T-026 才能从 main 切分支
+- 完成：主人批准 ADR-0004（§10 全部按推荐：批准例外、默认「信任站点免确认」、前台服务 `specialUse`、任务分支从 main 切出并 PR 到 main）；ADR 状态改为已采纳；按 §7 修订 AGENTS.md §2/§3/§4 与 docs/ARCHITECTURE.md；T-026～T-029 解除阻塞
+- 未完成 / 风险：无
 - 兼容性验证：不涉及存储（仅文档）
 - 泄露自查：无新增密钥与敏感日志
-- 下一棒建议：合入 PR #4 → 开发者从 main 切 task/T-026-mcp-service，versionCode 31
+- 下一棒建议：T-026 + T-027
 
 ## 2026-10-20 01:45 CST · 系统架构师（Hark） · T-025（修订 2）
 - 分支 / 提交：task/T-025-mcp-adr（PR #4 追加提交）
