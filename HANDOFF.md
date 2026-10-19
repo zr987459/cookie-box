@@ -2,6 +2,14 @@
 
 模板见 AGENTS.md 第 6 节。
 
+## 2026-10-20 02:20 CST · 开发者（Hark） · T-026
+- 分支 / 提交：task/T-026-mcp-service（从 main @ 78ea455 切出；v1.10.0，versionCode 31）
+- 完成：新增 `mcp/` 包：McpService（specialUse 前台服务，常驻通知「AI 访问已开启」，点按即关闭）、McpHttpServer（手写 ServerSocket，头 16 KiB / 体 1 MiB / 读超时 15 s / 总时限 20 s / 并发 4，按字节读 Content-Length，支持 Expect: 100-continue，chunked 返回 411）、McpGateway（路径 → Host → Origin 白名单 → CORS 预检 → 失败冷却 → Bearer Token）、McpAuth、McpProtocol（initialize / ping / tools/list / tools/call / 通知 202 / GET 405 / DELETE 结束会话，协议版本 2025-11-25 / 2025-06-18 / 2025-03-26，Mcp-Session-Id）、McpPrefs（mcp_prefs）、McpTokenStore（Keystore 新别名 cookiebox_mcp_key）、McpToolRegistry（T-026 为空）、McpSettingsActivity（总开关、地址、Token 显示 / 复制 / 重置、复制客户端配置、端口、局域网开关含风险提示、Origin 白名单）；MainActivity 只加菜单项「AI 访问（MCP）」；Manifest 加 FOREGROUND_SERVICE / FOREGROUND_SERVICE_SPECIAL_USE、service 与设置页声明
+- 未完成 / 风险：工具列表为空（T-027 起）；未做自动化测试（T-005b 才引入测试依赖）；Android 12+ 进程被杀后系统重建服务时若不允许进前台，会自动关闭开关，需用户回设置页重新开启
+- 兼容性验证：未编译、未真机验证（通过 GitHub API 提交，以 CI 结果为准）。存储只新增 mcp_prefs 与 Keystore 别名 cookiebox_mcp_key，不读写 cookie_vault_storage / account_vault / browser_prefs / cookiebox_download，不碰已有别名；开关默认关闭，关闭时服务不启动、端口不监听。从 1.6.x / 1.7.0 / 1.9.1 覆盖安装：未真机验证（代码路径上不触及旧数据）
+- 泄露自查：无新增密钥；日志只含端口、状态码、异常类型名；Token 只在用户点「显示」时上屏，复制时剪贴板标记敏感；仓库内无真实 Token
+- 下一棒建议：真机验收（开关关闭端口不可连；开启后 curl 带 / 不带 Token、带 Origin 的返回码；MCP 客户端 initialize 与 tools/list）→ 合入后认领 T-027
+
 ## 2026-10-20 01:50 CST · 系统架构师（Hark） · T-025（主人批准）
 - 分支 / 提交：task/T-025-mcp-adr（PR #4 追加提交）
 - 完成：主人批准 ADR-0004：例外批准、写确认默认「信任的站点免确认」、前台服务 specialUse、以后任务分支从 main 切。ADR 状态改「已采纳」并记录裁决；按 ADR §7 修订 AGENTS.md §2（基线改 main）、§3（登记 mcp_prefs 键与 cookiebox_mcp_key，标注 T-026 起）、§4（MCP 例外条款）与 docs/ARCHITECTURE.md（mcp 模块、依赖方向、本机服务边界）；TASKS.md T-025 完成、T-026～T-029 改为待办
