@@ -117,7 +117,7 @@ class McpGrantsActivity : AppCompatActivity() {
         })
         content.addView(note(
             "候选站点来自 AI 访问开启期间打开过的网站，也可以手动添加。授权某个域名后，它的子域名同样可用。" +
-                "未授权的身份不会出现在 AI 看到的标签列表里。"
+                "未授权的身份不会出现在 AI 看到的标签列表里。勾选右侧「信任」后，该站点的写操作在「信任的站点免确认」模式下不再询问。"
         ))
 
         for (p in profiles()) {
@@ -136,7 +136,8 @@ class McpGrantsActivity : AppCompatActivity() {
             val candidates = McpGrants.candidates(this, p.name)
             val checked = McpGrants.checkedDomains(this, p.name)
             val manual = McpGrants.manual(this, p.name).toSet()
-            val shown = LinkedHashSet<String>().apply { addAll(candidates); addAll(checked) }
+            val trusted = McpGrants.trusted(this, p.name).toSet()
+            val shown = LinkedHashSet<String>().apply { addAll(candidates); addAll(checked); addAll(trusted) }
             if (shown.isEmpty()) {
                 content.addView(note("还没有候选站点：开启 AI 访问后用这个身份打开网站，或手动添加。"))
             }
@@ -161,7 +162,22 @@ class McpGrantsActivity : AppCompatActivity() {
                         }
                     }
                 }
-                content.addView(cb, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+                val trust = MaterialCheckBox(this).apply {
+                    text = "信任"
+                    textSize = 13f
+                    setTextColor(attrColor(com.google.android.material.R.attr.colorOnSurfaceVariant))
+                    isChecked = domain in trusted
+                    minHeight = dp(48)
+                    contentDescription = "信任 $domain：写操作免确认"
+                    setOnCheckedChangeListener { _, c -> McpGrants.setTrusted(this@McpGrantsActivity, p.name, domain, c) }
+                }
+                val row = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    addView(cb, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                    addView(trust, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+                }
+                content.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             }
             content.addView(outlinedButton("添加域名") { addDomainDialog(p) })
         }

@@ -138,7 +138,11 @@ class McpService : Service() {
         )
         McpTabs.init(applicationContext)
         McpTabs.seedVisited()
-        val protocol = McpProtocol(appVersion(), McpToolRegistry.tools(applicationContext))
+        WriteGuard.init(applicationContext)
+        WriteGuard.resetSessions()
+        val protocol = McpProtocol(appVersion(), McpToolRegistry.tools(applicationContext)) { entry ->
+            CallLog.add(applicationContext, entry)
+        }
         val gateway = McpGateway(auth, protocol)
         val s = McpHttpServer(bind, port, gateway::handle)
         try {
@@ -159,6 +163,8 @@ class McpService : Service() {
     }
 
     private fun shutdown() {
+        WriteGuard.denyAllPending()
+        WriteGuard.resetSessions()
         server?.stop()
         server = null
         isRunning = false

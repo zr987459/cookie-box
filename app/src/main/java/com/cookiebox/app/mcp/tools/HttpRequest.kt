@@ -13,6 +13,7 @@ import com.cookiebox.app.mcp.McpTool
 import com.cookiebox.app.mcp.McpToolContext
 import com.cookiebox.app.mcp.McpToolException
 import com.cookiebox.app.mcp.McpToolResult
+import com.cookiebox.app.mcp.WriteGuard
 import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
@@ -40,7 +41,8 @@ import javax.net.ssl.SSLSocketFactory
  * http_request（ADR-0004 §4.3）：以某个标签身份向已授权域名发请求。
  * - page 通道：在标签页面里 fetch(credentials:'include')，随机 window 变量 + 轮询 + 分块取回，不用 addJavascriptInterface。
  * - native 通道：HttpURLConnection，手动 Cookie、手动重定向（最多 10 跳）、Set-Cookie 逐条写回该身份，回环地址拦截。
- * - T-027 只开放 GET / HEAD；其他方法属于写操作，要等 T-028 的确认机制，当前直接拒绝。
+ * - GET / HEAD / OPTIONS 为读；其他方法是写操作，先经 [WriteGuard] 确认（T-028）。
+ * - 写操作在 page 通道失败时不自动改走 native（简单请求可能已经送达站点），由调用方决定是否 mode=native 重试。
  */
 class HttpRequest(private val context: Context) : McpTool {
 
@@ -53,7 +55,8 @@ class HttpRequest(private val context: Context) : McpTool {
         private const val CONNECT_TIMEOUT_MS = 10_000
         private const val READ_TIMEOUT_MS = 20_000
 
-        private val READ_METHODS = setOf("GET", "HEAD")
+        private val READ_METHODS = setOf("GET", "HEAD", "OPTIONS")
+        private val ALLOWED_METHODS = setOf("GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE")
         /** 调用方不能覆盖的请求头 */
         private val BLOCKED_HEADERS = setOf("host", "cookie", "content-length", "connection", "transfer-encoding", "keep-alive", "upgrade", "te", "trailer")
 
@@ -71,6 +74,7 @@ try{document.addEventListener('securitypolicyviolation',onv);}catch(x){}
 function b64(u){var s='';for(var i=0;i<u.length;i+=32768){s+=String.fromCharCode.apply(null,u.subarray(i,i+32768));}return btoa(s);}
 function fin(o){try{document.removeEventListener('securitypolicyviolation',onv);}catch(x){}window[k]=o;}
 var init={method:__M__,headers:__H__,credentials:'include',redirect:'follow',cache:'no-store'};
+var bb=__B__;if(bb!==null){if(__BB64__){var bs=atob(bb),ba=new Uint8Array(bs.length);for(var j=0;j<bs.length;j++)ba[j]=bs.charCodeAt(j);init.body=ba;}else{init.body=bb;}}
 fetch(__U__,init).then(function(r){
 var h={};r.headers.forEach(function(v,n){h[n]=v;});
 var meta={state:'done',status:r.status,statusText:r.statusText,url:r.url,redirected:r.redirected,headers:h};
@@ -112,23 +116,27 @@ return 'ok';
             "(same cookies, User-Agent, Referer). mode=page runs fetch() inside the tab's page (same TLS fingerprint and " +
             "headers as the site's own requests, subject to CORS/CSP); mode=native sends from the app with the profile's " +
             "cookies and writes Set-Cookie back to the profile; mode=auto (default) tries page first when the tab is loaded " +
-            "and falls back to native for GET/HEAD. This version allows GET and HEAD only. Text bodies are returned as text, " +
+            "and falls back to native for GET/HEAD. POST/PUT/PATCH/DELETE are write operations: the user may be asked to " +
+            "confirm on the phone (up to 60 s) and a denial returns an error; a failed write on the page channel is NOT retried " +
+            "automatically (it may already have reached the site), retry with mode=native only if appropriate. Text bodies are returned as text, " +
             "binary as base64; large bodies are truncated (truncated=true)."
     override val inputSchema: JSONObject = ToolSupport.schema(
         JSONObject()
             .put("session_id", ToolSupport.str("Tab id from list_sessions"))
             .put("url", ToolSupport.str("Absolute http(s) URL on an authorized domain"))
-            .put("method", ToolSupport.str("HTTP method; GET (default) or HEAD in this version", listOf("GET", "HEAD")))
+            .put("method", ToolSupport.str("HTTP method, default GET", listOf("GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE")))
             .put(
                 "headers",
                 JSONObject().put("type", "object").put("description", "Extra request headers (Cookie and Host are ignored)")
                     .put("additionalProperties", JSONObject().put("type", "string"))
             )
-            .put("body", ToolSupport.str("Request body (not used for GET/HEAD)"))
+            .put("body", ToolSupport.str("Request body as text (set Content-Type in headers); ignored for GET/HEAD"))
+            .put("body_base64", ToolSupport.str("Binary request body as base64 (instead of body)"))
             .put("mode", ToolSupport.str("Channel: auto (default), page or native", listOf("auto", "page", "native"))),
         listOf("session_id", "url")
     )
-    override val annotations: JSONObject = JSONObject().put("readOnlyHint", true).put("openWorldHint", true)
+    override val annotations: JSONObject = JSONObject()
+        .put("readOnlyHint", false).put("destructiveHint", true).put("idempotentHint", false).put("openWorldHint", true)
 
     private class Outcome(val result: JSONObject)
     private class PageFailure(val reason: String, val detail: String) : Exception(reason)
@@ -137,44 +145,78 @@ return 'ok';
         val session = ToolSupport.resolveSession(this.context, ToolSupport.requireString(arguments, "session_id"))
         val url = ToolSupport.requireString(arguments, "url")
         val host = McpGrants.hostOf(url) ?: throw McpToolException("url 必须是 http:// 或 https:// 网址")
+        context.logLabel = session.customName.ifBlank { session.profileName }
+        context.logDomain = host
         ToolSupport.requireAuthorized(this.context, session, host)
 
         val method = (ToolSupport.optString(arguments, "method") ?: "GET").uppercase(Locale.ROOT)
-        if (method !in READ_METHODS) {
-            throw McpToolException(
-                "$method 属于写操作，需要用户确认；确认功能在下一版本（T-028）提供，当前版本只允许 GET / HEAD"
-            )
-        }
+        if (method !in ALLOWED_METHODS) throw McpToolException("不支持的方法 $method")
         val mode = (ToolSupport.optString(arguments, "mode") ?: "auto").lowercase(Locale.ROOT)
         if (mode !in setOf("auto", "page", "native")) throw McpToolException("mode 只能是 auto / page / native")
         val headers = parseHeaders(arguments.opt("headers"))
+        val isWrite = method !in READ_METHODS
+        val body: Body? = if (method == "GET" || method == "HEAD") null else parseBody(arguments)
+
+        if (isWrite) {
+            // 摘要只含方法 + 路径（不含查询值、请求头值、正文）
+            val path = try { URI(url).rawPath?.ifEmpty { "/" } ?: "/" } catch (e: Exception) { "/" }
+            val query = if (url.substringBefore('#').contains('?')) "?…" else ""
+            val bodyNote = body?.let { "（正文 ${it.bytes.size} 字节）" } ?: ""
+            WriteGuard.check(
+                this.context, name, context.logLabel, session.profileName, host,
+                "$method $host$path$query$bodyNote", context.sessionId
+            )
+        }
 
         // 同一「身份 × 域名」串行
         val lock = locks.getOrPut(session.profileName + "|" + McpGrants.registrableDomain(host)) { Any() }
         val out = synchronized(lock) {
             when (mode) {
-                "native" -> native(session, method, url, headers, null)
+                "native" -> native(session, method, url, headers, body, null)
                 "page" -> try {
-                    page(session, method, url, headers)
+                    page(session, method, url, headers, body)
                 } catch (e: PageFailure) {
                     throw McpToolException("page 通道失败（${e.reason}）：${e.detail}")
                 }
                 else -> {
                     val pageUsable = McpTabs.onMain { it.tab(session.id)?.loaded == true }
                     if (!pageUsable) {
-                        native(session, method, url, headers, JSONObject().put("from", "page").put("reason", "tab page not loaded"))
+                        // 页面没加载：写操作也直接走 native（没有发出过任何请求，不存在重复提交）
+                        native(session, method, url, headers, body, JSONObject().put("from", "page").put("reason", "tab page not loaded"))
                     } else {
                         try {
-                            page(session, method, url, headers)
+                            page(session, method, url, headers, body)
                         } catch (e: PageFailure) {
-                            // 只有 GET / HEAD 会走到这里，可安全重发
-                            native(session, method, url, headers, JSONObject().put("from", "page").put("reason", e.reason).put("detail", e.detail))
+                            if (isWrite && e.reason != "inject_failed" && e.reason != "tab_closed") {
+                                // 写操作可能已送达站点：不自动重发
+                                throw McpToolException(
+                                    "page 通道失败（${e.reason}）：${e.detail}。写操作不会自动重试，请求可能已送达站点；" +
+                                        "确认未生效后可用 mode=native 重试"
+                                )
+                            }
+                            native(session, method, url, headers, body, JSONObject().put("from", "page").put("reason", e.reason).put("detail", e.detail))
                         }
                     }
                 }
             }
         }
         return McpToolResult.json(out.result)
+    }
+
+    private class Body(val bytes: ByteArray, val isBase64: Boolean, val text: String?)
+
+    private fun parseBody(args: JSONObject): Body? {
+        val b64 = ToolSupport.optString(args, "body_base64")
+        if (b64 != null) {
+            val bytes = try { Base64.decode(b64, Base64.DEFAULT) } catch (e: IllegalArgumentException) {
+                throw McpToolException("body_base64 不是有效的 Base64")
+            }
+            return Body(bytes, true, b64)
+        }
+        val v = args.opt("body")
+        if (v == null || v == JSONObject.NULL) return null
+        val text = v.toString()
+        return Body(text.toByteArray(Charsets.UTF_8), false, text)
     }
 
     private fun parseHeaders(raw: Any?): Map<String, String> {
@@ -196,18 +238,23 @@ return 'ok';
     // page 通道
     // =====================================================================
 
-    private fun page(session: ToolSupport.Session, method: String, url: String, headers: Map<String, String>): Outcome {
+    private fun page(session: ToolSupport.Session, method: String, url: String, headers: Map<String, String>, body: Body?): Outcome {
         val limit = McpPrefs(context).pageMaxBodyBytes
         val k = "__cb_" + ByteArray(16).also { random.nextBytes(it) }.joinToString("") { "%02x".format(it) }
         val kq = JSONObject.quote(k)
         val h = JSONObject()
         headers.forEach { (n, v) -> h.put(n, v) }
-        val script = PAGE_FETCH_JS
-            .replace("__K__", kq)
-            .replace("__LIM__", limit.toString())
-            .replace("__M__", JSONObject.quote(method))
-            .replace("__H__", h.toString())
-            .replace("__U__", JSONObject.quote(url))
+        // 单次替换所有占位符，避免调用方的请求头 / 正文里恰好含占位符被二次替换
+        val values = mapOf(
+            "__K__" to kq,
+            "__LIM__" to limit.toString(),
+            "__M__" to JSONObject.quote(method),
+            "__H__" to h.toString(),
+            "__U__" to JSONObject.quote(url),
+            "__BB64__" to if (body?.isBase64 == true) "true" else "false",
+            "__B__" to if (body == null) "null" else JSONObject.quote(body.text ?: "")
+        )
+        val script = Regex("__(K|LIM|M|H|U|BB64|B)__").replace(PAGE_FETCH_JS) { m -> values[m.value] ?: m.value }
 
         val deadline = System.currentTimeMillis() + PAGE_TIMEOUT_MS
         try {
@@ -309,6 +356,7 @@ return 'ok';
         method: String,
         url: String,
         headers: Map<String, String>,
+        body: Body?,
         fallback: JSONObject?
     ): Outcome {
         if (CookieHandler.getDefault() != null) {
@@ -323,6 +371,7 @@ return 'ok';
 
         var current = try { URL(url) } catch (e: Exception) { throw McpToolException("url 格式不正确") }
         var currentMethod = method
+        var currentBody = body
         var redirects = 0
         val chain = JSONArray()
         while (true) {
@@ -347,6 +396,13 @@ return 'ok';
                 val cookie = McpTabs.onMain { access -> access.cookieManagerFor(session.profileName)?.getCookie(current.toString()) }
                 if (!cookie.isNullOrBlank()) conn.setRequestProperty("Cookie", cookie)
 
+                val sendBody = currentBody
+                if (sendBody != null && currentMethod != "GET" && currentMethod != "HEAD") {
+                    conn.doOutput = true
+                    conn.setFixedLengthStreamingMode(sendBody.bytes.size)
+                    conn.outputStream.use { it.write(sendBody.bytes) }
+                }
+
                 val code = conn.responseCode
                 val setCookies = conn.headerFields.entries
                     .filter { it.key != null && it.key.equals("Set-Cookie", ignoreCase = true) }
@@ -367,7 +423,11 @@ return 'ok';
                         nextHost != null && McpGrants.isAuthorized(context, session.profileName, nextHost)
                     if (nextOk && redirects < MAX_REDIRECTS) {
                         chain.put(JSONObject().put("status", code).put("url", current.toString()))
-                        if (code in setOf(301, 302, 303) && currentMethod != "HEAD") currentMethod = "GET"
+                        // 301/302 的 POST 与所有 303（HEAD 除外）改 GET 并丢弃正文；307/308 保持方法与正文
+                        if ((code == 303 && currentMethod != "HEAD") || (code in setOf(301, 302) && currentMethod == "POST")) {
+                            currentMethod = "GET"
+                            currentBody = null
+                        }
                         redirects++
                         drain(conn)
                         current = next!!

@@ -13,6 +13,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import com.cookiebox.app.R
 import com.cookiebox.app.databinding.ActivityMcpSettingsBinding
 import org.json.JSONObject
 import java.net.Inet4Address
@@ -62,6 +63,10 @@ class McpSettingsActivity : AppCompatActivity() {
             startActivity(android.content.Intent(this, McpGrantsActivity::class.java))
         }
 
+        binding.btnCallLog.setOnClickListener {
+            startActivity(android.content.Intent(this, McpCallLogActivity::class.java))
+        }
+        binding.rgConfirmMode.setOnCheckedChangeListener { _, id -> onConfirmModeChosen(id) }
         binding.btnSavePort.setOnClickListener { savePort() }
 
         binding.switchLan.setOnCheckedChangeListener { _, checked ->
@@ -134,6 +139,7 @@ class McpSettingsActivity : AppCompatActivity() {
         binding.tvEndpoint.text = endpoints.joinToString("\n")
 
         binding.tvGrantsSummary.text = grantsSummary()
+        renderConfirmMode()
 
         val token = McpTokenStore.current(this)
         binding.tvToken.text = when {
@@ -148,6 +154,46 @@ class McpSettingsActivity : AppCompatActivity() {
         binding.btnResetToken.isEnabled = hasToken
         binding.btnCopyConfig.isEnabled = hasToken
         updatingUi = false
+    }
+
+    private var renderingMode = false
+
+    private fun renderConfirmMode() {
+        renderingMode = true
+        binding.rgConfirmMode.check(
+            when (McpPrefs(this).confirmMode) {
+                McpPrefs.CONFIRM_ALWAYS -> R.id.rbConfirmAlways
+                McpPrefs.CONFIRM_NEVER -> R.id.rbConfirmNever
+                else -> R.id.rbConfirmTrusted
+            }
+        )
+        renderingMode = false
+    }
+
+    private fun onConfirmModeChosen(id: Int) {
+        if (renderingMode) return
+        val prefs = McpPrefs(this)
+        when (id) {
+            R.id.rbConfirmAlways -> prefs.confirmMode = McpPrefs.CONFIRM_ALWAYS
+            R.id.rbConfirmTrusted -> prefs.confirmMode = McpPrefs.CONFIRM_TRUSTED_SKIP
+            R.id.rbConfirmNever -> {
+                if (prefs.confirmMode == McpPrefs.CONFIRM_NEVER) return
+                if (prefs.allSkipWarned) {
+                    prefs.confirmMode = McpPrefs.CONFIRM_NEVER
+                    return
+                }
+                androidx.appcompat.app.AlertDialog.Builder(this)
+                    .setTitle("全部免确认？")
+                    .setMessage("AI 将可以在已授权站点上提交、发帖、付款等，无需你确认。")
+                    .setPositiveButton("确定") { _, _ ->
+                        prefs.allSkipWarned = true
+                        prefs.confirmMode = McpPrefs.CONFIRM_NEVER
+                    }
+                    .setNegativeButton("取消") { _, _ -> renderConfirmMode() }
+                    .setOnCancelListener { renderConfirmMode() }
+                    .show()
+            }
+        }
     }
 
     private fun grantsSummary(): String {

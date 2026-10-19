@@ -2,6 +2,20 @@
 
 模板见 AGENTS.md 第 6 节。
 
+## 2026-10-20 06:00 CST · 开发者（Hark） · T-028
+- 分支 / 提交：task/T-028-write-confirm（从 main @ 782ca10 切出；v1.12.0，versionCode 33）
+- 完成：
+  - `mcp/WriteGuard.kt`：三档 confirm_mode（每次确认 / 信任的站点免确认（默认）/ 全部免确认）；「信任的站点免确认」下信任站点与「本次会话免确认」（按 Mcp-Session-Id × 身份 × 站点，内存保存，DELETE 会话或服务停止即清空；无会话头时按本次服务运行）不询问；应用在前台直接弹框，同时发高优先级通知（新渠道 mcp_confirm）点按进入；60 s 无响应拒绝；服务停止时待确认的一律拒绝
+  - `mcp/McpConfirmActivity.kt`：透明 Activity + 对话框，显示工具 / 标签 / 站点 / 摘要（方法 + 主机 + 路径，查询串只显示「?…」，正文只显示字节数）；可勾「本次会话免确认」「信任该站点，以后不再询问」（写入 grants.trusted）；返回 / 关闭 = 拒绝；多请求排队
+  - `mcp/CallLog.kt` + `mcp/McpCallLogActivity.kt`：call_log 环形 500 条，只记时间 / 工具 / 标签 / 域名 / 结果（ok / denied / error）/ 耗时；一键清空
+  - `tools/HttpRequest.kt`：开放 POST / PUT / PATCH / DELETE / OPTIONS（body 或 body_base64）；写操作先经 WriteGuard；page 通道写操作失败不自动回退 native（注入失败 / 标签关闭等未发出请求的情况除外）；native 重定向 303 与 301/302 的 POST 改 GET 丢正文，307/308 保留方法与正文；页面脚本占位符改为单次替换
+  - 站点授权页每个域名加「信任」勾选（可撤销）；设置页加写操作确认三档（全部免确认首次开启提示一次）与调用记录入口；McpProtocol 记录每次 tools/call，DELETE 会话清除会话免确认
+  - McpPrefs 新增 confirm_mode、call_log、all_skip_warned
+- 未完成 / 风险：后台弹确认依赖通知（Android 13+ 未授予通知权限时只能在应用前台确认，否则 60 s 后拒绝）；确认等待期间占用一个 HTTP 工作线程（并发上限 4）
+- 兼容性验证：未编译、未真机验证（以 CI 为准）。只在 mcp_prefs 新增键；不读写其他已有文件、键与 Keystore 别名
+- 泄露自查：确认框 / 通知 / 调用记录不含 Cookie、请求头值、查询值、正文；日志只含异常类型名
+- 下一棒建议：真机验收（三档切换；本次会话免确认在客户端重连后失效；信任后不再询问且可在授权页取消；后台时通知可点开确认；60 s 超时拒绝；调用记录清空）→ 合入后认领 T-029
+
 ## 2026-10-20 05:40 CST · 开发者（Hark） · T-027
 - 分支 / 提交：task/T-027-mcp-readonly-tools（从 main @ 5b0e383 切出；v1.11.0，versionCode 32）
 - 完成：
