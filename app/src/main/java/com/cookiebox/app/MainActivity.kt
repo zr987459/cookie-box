@@ -990,6 +990,7 @@ class MainActivity : AppCompatActivity() {
         m.add(0, 12, 11, "清除当前身份的 Cookie 和缓存")
         m.add(0, 13, 1, "账号管理（账号密码）")
         if (hasPage) m.add(0, 14, 2, "保存本页填写的账号密码")
+        m.add(0, 15, 12, "AI 访问（MCP）")
 
         popup.setOnMenuItemClickListener { item ->
             val wv = tab?.webView
@@ -1019,6 +1020,7 @@ class MainActivity : AppCompatActivity() {
                 12 -> showClearCookiesDialog()
                 13 -> openAccountsDialog()
                 14 -> tab?.let { saveCurrentPageLogin(it) }
+                15 -> startActivity(Intent(this, com.cookiebox.app.mcp.McpSettingsActivity::class.java))
             }
             true
         }
