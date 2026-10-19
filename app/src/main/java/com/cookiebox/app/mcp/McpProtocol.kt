@@ -19,9 +19,16 @@ interface McpTool {
     fun call(arguments: JSONObject, context: McpToolContext): McpToolResult
 }
 
-class McpToolContext(val sessionId: String?)
+/** 工具调用上下文：sessionId 为 Mcp-Session-Id；logLabel / logDomain 由工具填写，只用于调用记录 */
+class McpToolContext(val sessionId: String?) {
+    @Volatile var logLabel: String = ""
+    @Volatile var logDomain: String = ""
+}
 
-class McpToolException(message: String) : Exception(message)
+open class McpToolException(message: String) : Exception(message)
+
+/** 用户拒绝或确认超时 */
+class McpDeniedException(message: String) : McpToolException(message)
 
 class McpToolResult(val content: JSONArray, val isError: Boolean = false, val structured: JSONObject? = null) {
     companion object {
@@ -47,7 +54,8 @@ class McpToolResult(val content: JSONArray, val isError: Boolean = false, val st
  */
 class McpProtocol(
     private val serverVersion: String,
-    private val tools: List<McpTool>
+    private val tools: List<McpTool>,
+    private val callLogger: ((CallLog.Entry) -> Unit)? = null
 ) {
 
     companion object {
@@ -75,7 +83,10 @@ class McpProtocol(
             "POST" -> handlePost(req, extraHeaders)
             "DELETE" -> {
                 val sid = req.header("mcp-session-id")
-                if (sid != null && sessions.remove(sid) != null) McpHttpServer.Response(204, extraHeaders)
+                if (sid != null && sessions.remove(sid) != null) {
+                    WriteGuard.endSession(sid)
+                    McpHttpServer.Response(204, extraHeaders)
+                }
                 else McpHttpServer.Response(404, extraHeaders)
             }
             "GET" -> McpHttpServer.Response(405, extraHeaders + ("Allow" to "POST, DELETE"))
@@ -170,14 +181,29 @@ class McpProtocol(
         val tool = tools.firstOrNull { it.name == name }
             ?: return errorObj(id, INVALID_PARAMS, "Unknown tool: $name")
         val args = params.optJSONObject("arguments") ?: JSONObject()
+        val ctx = McpToolContext(sid)
+        val started = System.currentTimeMillis()
+        var outcome = CallLog.RESULT_OK
         val result = try {
-            tool.call(args, McpToolContext(sid))
+            tool.call(args, ctx).also { if (it.isError) outcome = CallLog.RESULT_ERROR }
+        } catch (e: McpDeniedException) {
+            outcome = CallLog.RESULT_DENIED
+            McpToolResult.text(e.message ?: "Denied", isError = true)
         } catch (e: McpToolException) {
+            outcome = CallLog.RESULT_ERROR
             McpToolResult.text(e.message ?: "Tool error", isError = true)
         } catch (e: Exception) {
             // 只记类型名，不记消息（可能含页面数据）
+            outcome = CallLog.RESULT_ERROR
             Log.w(TAG, "tool $name failed: ${e.javaClass.simpleName}")
             McpToolResult.text("Internal error in tool $name", isError = true)
+        }
+        try {
+            callLogger?.invoke(
+                CallLog.Entry(started, name, ctx.logLabel, ctx.logDomain, outcome, System.currentTimeMillis() - started)
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "call log failed: ${e.javaClass.simpleName}")
         }
         return resultObj(id, result.toJson())
     }

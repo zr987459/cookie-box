@@ -39,6 +39,8 @@ class GetCookies(private val context: Context) : McpTool {
             }
             ?: throw McpToolException("需要 url 或 domain")
         val host = McpGrants.hostOf(url) ?: throw McpToolException("url 必须是 http:// 或 https:// 网址")
+        context.logLabel = session.customName.ifBlank { session.profileName }
+        context.logDomain = host
         ToolSupport.requireAuthorized(this.context, session, host)
 
         val raw = McpTabs.onMain { access ->

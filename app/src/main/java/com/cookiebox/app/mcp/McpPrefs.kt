@@ -19,6 +19,14 @@ class McpPrefs(context: Context) {
         const val KEY_VISITED_HOSTS = "visited_hosts"
         const val KEY_MAX_BODY_BYTES = "max_body_bytes"
         const val KEY_PAGE_MAX_BODY_BYTES = "page_max_body_bytes"
+        const val KEY_CONFIRM_MODE = "confirm_mode"
+        const val KEY_CALL_LOG = "call_log"
+        const val KEY_ALL_SKIP_WARNED = "all_skip_warned"
+
+        /** 写操作确认三档（ADR-0004 §5.4） */
+        const val CONFIRM_ALWAYS = 0
+        const val CONFIRM_TRUSTED_SKIP = 1
+        const val CONFIRM_NEVER = 2
 
         /** native 通道正文截断：默认 1 MiB，上限 8 MiB */
         const val DEFAULT_MAX_BODY = 1024 * 1024
@@ -80,4 +88,19 @@ class McpPrefs(context: Context) {
     var visitedHostsJson: String?
         get() = sp.getString(KEY_VISITED_HOSTS, null)
         set(v) { sp.edit().putString(KEY_VISITED_HOSTS, v).apply() }
+
+    /** 写操作确认模式，默认「信任的站点免确认」 */
+    var confirmMode: Int
+        get() = sp.getInt(KEY_CONFIRM_MODE, CONFIRM_TRUSTED_SKIP).takeIf { it in CONFIRM_ALWAYS..CONFIRM_NEVER } ?: CONFIRM_TRUSTED_SKIP
+        set(v) { sp.edit().putInt(KEY_CONFIRM_MODE, v.coerceIn(CONFIRM_ALWAYS, CONFIRM_NEVER)).commit() }
+
+    /** 「全部免确认」的一次性提示是否已显示 */
+    var allSkipWarned: Boolean
+        get() = sp.getBoolean(KEY_ALL_SKIP_WARNED, false)
+        set(v) { sp.edit().putBoolean(KEY_ALL_SKIP_WARNED, v).apply() }
+
+    /** 调用记录 JSON 数组（环形，最多 500 条，新的在后） */
+    var callLogJson: String?
+        get() = sp.getString(KEY_CALL_LOG, null)
+        set(v) { sp.edit().putString(KEY_CALL_LOG, v).apply() }
 }

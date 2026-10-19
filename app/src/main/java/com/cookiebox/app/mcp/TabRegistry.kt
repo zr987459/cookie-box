@@ -76,6 +76,8 @@ object McpTabs : TabRegistry {
     /** MainActivity.onCreate 调用 */
     fun attach(activity: Activity, provider: () -> List<TabItem>) {
         appContext = activity.applicationContext
+        // 尽早开始统计前台 Activity，写确认据此决定直接弹框还是只发通知
+        WriteGuard.init(activity)
         activityRef = WeakReference(activity)
         tabsProvider = provider
     }

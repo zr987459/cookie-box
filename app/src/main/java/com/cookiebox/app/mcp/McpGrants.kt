@@ -17,7 +17,8 @@ import java.util.Locale
  *     "Profile_Default": {
  *       "all": false,                     // 授权该身份全部站点
  *       "manual": ["example.com"],        // 用户手动添加的候选域名
- *       "domains": { "bilibili.com": { "trust": false } }   // 逐个勾选；trust 供 T-028 写确认使用
+ *       "domains": { "bilibili.com": { "trust": false } },  // 逐个勾选
+ *       "trusted": ["bilibili.com"]       // 信任：写操作免确认（「信任的站点免确认」模式下生效，含子域）
  *     }
  *   }
  * }
@@ -187,6 +188,29 @@ object McpGrants {
         for (i in 0 until arr.length()) arr.optString(i).let { d -> if (d != domain) next.put(d) }
         p.put("manual", next)
         p.optJSONObject("domains")?.remove(domain)
+    }
+
+    // ---------- 信任（写操作免确认，T-028） ----------
+
+    fun trusted(context: Context, profileName: String): List<String> {
+        val p = profileObj(parseObj(McpPrefs(context).grantsJson), profileName, create = false) ?: return emptyList()
+        val out = LinkedHashSet<String>()
+        p.optJSONArray("trusted")?.let { arr -> for (i in 0 until arr.length()) arr.optString(i).takeIf { it.isNotEmpty() }?.let { out.add(it) } }
+        p.optJSONObject("domains")?.let { d -> d.keys().forEach { k -> if (d.optJSONObject(k)?.optBoolean("trust", false) == true) out.add(k) } }
+        return out.toList()
+    }
+
+    fun isTrusted(context: Context, profileName: String, host: String): Boolean =
+        trusted(context, profileName).any { hostMatches(host, it) }
+
+    fun setTrusted(context: Context, profileName: String, domain: String, value: Boolean) = edit(context) {
+        val p = profileObj(it, profileName, create = true)!!
+        val arr = p.optJSONArray("trusted") ?: JSONArray()
+        val next = JSONArray()
+        for (i in 0 until arr.length()) arr.optString(i).let { d -> if (d.isNotEmpty() && d != domain) next.put(d) }
+        if (value) next.put(domain)
+        p.put("trusted", next)
+        p.optJSONObject("domains")?.optJSONObject(domain)?.put("trust", value)
     }
 
     /** 清除全部授权（不清 visited_hosts） */

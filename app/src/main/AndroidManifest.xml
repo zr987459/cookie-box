@@ -63,6 +63,21 @@
             android:exported="false"
             android:label="站点授权" />
 
+        <!-- AI 访问（MCP）写操作确认：透明窗口上的对话框，不进最近任务 -->
+        <activity
+            android:name=".mcp.McpConfirmActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:taskAffinity="com.cookiebox.app.mcpconfirm"
+            android:theme="@style/Theme.CookieBox.McpConfirm" />
+
+        <!-- AI 访问（MCP）调用记录 -->
+        <activity
+            android:name=".mcp.McpCallLogActivity"
+            android:exported="false"
+            android:label="调用记录" />
+
         <!-- 本机 MCP 服务：只监听 127.0.0.1（局域网为独立开关），不对其他应用导出 -->
         <service
             android:name=".mcp.McpService"
