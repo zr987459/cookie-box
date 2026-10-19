@@ -100,12 +100,23 @@
                 tools:text="https://hark.com/chat" />
         </LinearLayout>
 
+        <!-- 重命名标签按钮（长按整行也可以） -->
+        <ImageButton
+            android:id="@+id/btnRenameTab"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:layout_marginStart="8dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="重命名标签"
+            android:padding="7dp"
+            android:src="@drawable/ic_edit" />
+
         <!-- 关闭标签按钮 -->
         <ImageButton
             android:id="@+id/btnCloseTab"
             android:layout_width="32dp"
             android:layout_height="32dp"
-            android:layout_marginStart="8dp"
+            android:layout_marginStart="2dp"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="关闭"
             android:padding="6dp"

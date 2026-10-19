@@ -14,7 +14,8 @@ class BrowserPrefs(context: Context) {
         val title: String,
         val isDesktop: Boolean,
         val isClone: Boolean,
-        val profileName: String
+        val profileName: String,
+        val customName: String = ""
     )
 
     private val sp = context.getSharedPreferences("browser_prefs", Context.MODE_PRIVATE)
@@ -87,6 +88,7 @@ class BrowserPrefs(context: Context) {
                     .put("desktop", it.isDesktop)
                     .put("clone", it.isClone)
                     .put("profile", it.profileName)
+                    .put("label", it.customName)
             )
         }
         sp.edit().putString("session_tabs", arr.toString()).putInt("session_active", activeIndex).apply()
@@ -103,7 +105,8 @@ class BrowserPrefs(context: Context) {
                     o.optString("title"),
                     o.optBoolean("desktop"),
                     o.optBoolean("clone"),
-                    o.optString("profile", "Profile_Default")
+                    o.optString("profile", "Profile_Default"),
+                    o.optString("label", "")
                 )
             }
             Pair(list, sp.getInt("session_active", 0))

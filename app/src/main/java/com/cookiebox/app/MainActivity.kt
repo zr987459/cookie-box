@@ -120,6 +120,7 @@ class MainActivity : AppCompatActivity() {
         private const val DESKTOP_UA =
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
         private const val DEFAULT_PROFILE = "Profile_Default"
+        private const val MAX_TAB_NAME_LENGTH = 24
 
         private fun cleanUserAgent(raw: String): String {
             // 剥除 Android WebView 专有的 Version/4.0 和 ; wv 标记，模拟官方纯净 Chrome，避免触发 Google 等站点的 CookieMismatch 拦截
@@ -206,7 +207,8 @@ class MainActivity : AppCompatActivity() {
                 title = it.title,
                 isDesktop = it.isDesktop,
                 isClone = it.isClone,
-                profileName = it.profileName
+                profileName = it.profileName,
+                customName = it.customName
             )
         }
         prefs.saveSession(saved, tabs.indexOfFirst { it.id == activeTabId }.coerceAtLeast(0))
@@ -227,6 +229,7 @@ class MainActivity : AppCompatActivity() {
                 desktop = s.isDesktop
             ).also {
                 it.title = s.title.ifBlank { it.title }
+                it.customName = s.customName
                 it.url = s.url
                 // 登录流程的网址带一次性参数，重启后再打开会报 400，恢复成空白标签
                 if (isSensitiveLoginPage(s.url)) {
@@ -300,6 +303,10 @@ class MainActivity : AppCompatActivity() {
             webView = webView,
             openerId = openerId
         )
+        // 分身标签里打开的新窗口属于同一个账号，沿用打开者的自定义名
+        tabs.firstOrNull { it.id == openerId }?.let { opener ->
+            if (opener.isClone && opener.profileName == resolvedProfile) newTab.customName = opener.customName
+        }
 
         // 核心：基于 AndroidX WebKit 架构实现真正的引擎级分身隔离 (各 Profile 持有完全独立的 Cookie 与 Storage)
         setupProfileForTab(newTab, webView)
@@ -660,6 +667,40 @@ class MainActivity : AppCompatActivity() {
             updateTabBadge()
         }
 
+        refreshTabsDialog()
+    }
+
+    private fun showRenameTabDialog(tabId: String) {
+        val tab = tabs.firstOrNull { it.id == tabId } ?: return
+        val pad = (20 * resources.displayMetrics.density).toInt()
+        val input = android.widget.EditText(this).apply {
+            setText(tab.customName)
+            setSelection(text.length)
+            hint = tab.title.ifBlank { "例如：B站大号、微博小号2" }
+            isSingleLine = true
+            filters = arrayOf(android.text.InputFilter.LengthFilter(MAX_TAB_NAME_LENGTH))
+        }
+        val container = android.widget.FrameLayout(this).apply {
+            setPadding(pad, pad / 2, pad, 0)
+            addView(input)
+        }
+        val builder = AlertDialog.Builder(this)
+            .setTitle("标签名称")
+            .setView(container)
+            .setPositiveButton("保存") { _, _ ->
+                applyTabName(tab, input.text.toString())
+            }
+            .setNegativeButton("取消", null)
+        if (tab.customName.isNotBlank()) {
+            builder.setNeutralButton("恢复默认") { _, _ -> applyTabName(tab, "") }
+        }
+        builder.show()
+    }
+
+    private fun applyTabName(tab: TabItem, raw: String) {
+        // 去掉换行与首尾空白，避免列表错位；只存本机，不含任何凭据
+        tab.customName = raw.replace(Regex("\\s+"), " ").trim().take(MAX_TAB_NAME_LENGTH)
+        saveSession()
         refreshTabsDialog()
     }
 
@@ -1287,6 +1328,7 @@ class MainActivity : AppCompatActivity() {
         tabsDialog = dialog
         dialog.onTabSelected = { tabId -> switchTab(tabId) }
         dialog.onTabClosed = { tabId -> requestCloseTab(tabId) }
+        dialog.onTabRenameRequested = { tabId -> showRenameTabDialog(tabId) }
         dialog.onNewTabRequested = { isClone -> createNewTab(initialUrl = "", isClone = isClone) }
         dialog.onDismissListener = { tabsDialog = null }
         dialog.show(supportFragmentManager, "TabsBottomSheet")
