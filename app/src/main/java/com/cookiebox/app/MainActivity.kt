@@ -162,8 +162,19 @@ class MainActivity : AppCompatActivity() {
         setContentView(binding.root)
         prefs = BrowserPrefs(this)
         vault = AccountVault(this)
-        // AI 访问（MCP）：只注册只读标签快照，逻辑全在 mcp 包
-        com.cookiebox.app.mcp.McpTabs.attach(this) { tabs.toList() }
+        // AI 访问（MCP）：注册只读标签快照 + 导航入口（open_url / 触发延迟加载），逻辑全在 mcp 包
+        com.cookiebox.app.mcp.McpTabs.attach(this, { tabs.toList() }) { tabId, url ->
+            val t = tabs.find { it.id == tabId } ?: return@attach false
+            if (url != null) {
+                loadUrlInTab(t, url)
+            } else {
+                t.pendingUrl?.let { pending ->
+                    t.pendingUrl = null
+                    t.webView?.loadUrl(pending)
+                }
+            }
+            true
+        }
 
         restoreSessionOrCreateTab()
 
@@ -426,6 +437,7 @@ class MainActivity : AppCompatActivity() {
                     if (it == "about:blank") return@let
                     newTab.url = it
                     newTab.pendingUrl = null
+                    com.cookiebox.app.mcp.McpTabs.onPageStarted(newTab.id)
                     if (newTab.id == activeTabId) {
                         if (!binding.etUrl.isFocused) {
                             binding.etUrl.setText(it)
@@ -448,7 +460,7 @@ class MainActivity : AppCompatActivity() {
                     if (newTab.id == activeTabId) {
                         updateSecurityIcon(it)
                     }
-                    com.cookiebox.app.mcp.McpTabs.onPageFinished(newTab.profileName, it)
+                    com.cookiebox.app.mcp.McpTabs.onPageFinished(newTab.id, newTab.profileName, it)
                 }
                 unlockZoom(view)
                 if (newTab.isDesktop) applyDesktopViewport(view)

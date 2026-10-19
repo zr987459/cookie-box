@@ -314,7 +314,7 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="开启后，持有令牌的 AI 客户端可以通过 MCP 协议使用你在曲奇盒里已登录的网站。AI 只能看到并使用你在「站点授权」里授权的身份与站点。当前版本提供 list_sessions、get_cookies 和 http_request；写操作按下方「写操作确认」设置处理。关闭开关或点按通知即可立即停止，端口不再监听。"
+                android:text="开启后，持有令牌的 AI 客户端可以通过 MCP 协议使用你在曲奇盒里已登录的网站。AI 只能看到并使用你在「站点授权」里授权的身份与站点。当前版本提供 list_sessions、get_cookies、http_request 和页面工具（open_url、get_page_text、screenshot、click、fill、eval_js）；写操作（非 GET 请求、click、fill、eval_js）按下方「写操作确认」设置处理。关闭开关或点按通知即可立即停止，端口不再监听。"
                 android:textColor="?attr/colorOnSurfaceVariant"
                 android:textSize="13sp" />
         </LinearLayout>

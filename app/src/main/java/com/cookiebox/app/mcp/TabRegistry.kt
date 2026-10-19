@@ -52,6 +52,9 @@ interface TabRegistry {
 
 class McpSessionExpiredException(message: String) : Exception(message)
 
+/** 页面加载状态快照（progress 0–100） */
+data class PageStatus(val progress: Int, val url: String, val title: String)
+
 /**
  * TabRegistry 的唯一实现。MainActivity 存活时读它的标签列表；
  * Activity 被销毁而服务仍在时，退化为 browser_prefs 的只读会话（MCP 代码绝不写 browser_prefs）。
@@ -68,18 +71,22 @@ object McpTabs : TabRegistry {
     private var activityRef: WeakReference<Activity>? = null
     @Volatile
     private var tabsProvider: (() -> List<TabItem>)? = null
+    /** MainActivity 提供的导航入口：url 非空时在该标签打开网址，为空时触发延迟加载（pendingUrl）。主线程调用 */
+    @Volatile
+    private var navigator: ((String, String?) -> Boolean)? = null
 
     fun init(context: Context) {
         appContext = context.applicationContext
     }
 
     /** MainActivity.onCreate 调用 */
-    fun attach(activity: Activity, provider: () -> List<TabItem>) {
+    fun attach(activity: Activity, provider: () -> List<TabItem>, navigate: ((String, String?) -> Boolean)? = null) {
         appContext = activity.applicationContext
         // 尽早开始统计前台 Activity，写确认据此决定直接弹框还是只发通知
         WriteGuard.init(activity)
         activityRef = WeakReference(activity)
         tabsProvider = provider
+        navigator = navigate
     }
 
     /** MainActivity.onDestroy 调用 */
@@ -87,11 +94,18 @@ object McpTabs : TabRegistry {
         if (activityRef?.get() === activity) {
             activityRef = null
             tabsProvider = null
+            navigator = null
         }
     }
 
+    /** 主框架开始导航（MainActivity 的 onPageStarted 调用，主线程） */
+    fun onPageStarted(tabId: String) {
+        PageWaiter.onStarted(tabId)
+    }
+
     /** 主框架导航完成（MainActivity 的 onPageFinished 调用，主线程） */
-    fun onPageFinished(profileName: String, url: String) {
+    fun onPageFinished(tabId: String, profileName: String, url: String) {
+        PageWaiter.onFinished(tabId)
         val ctx = appContext ?: return
         McpGrants.recordVisit(ctx, profileName, url)
     }
@@ -152,6 +166,24 @@ object McpTabs : TabRegistry {
                 fromSavedSession = true
             )
         }
+    }
+
+    /** 标签是否还在等切换才加载（pendingUrl）；标签不存在或界面未运行返回 null（主线程） */
+    fun isPending(tabId: String): Boolean? {
+        val live = liveTabs() ?: return null
+        val t = live.firstOrNull { it.id == tabId } ?: return null
+        return t.pendingUrl != null
+    }
+
+    /** 让标签打开网址（url 为空则触发延迟加载）。界面未运行时返回 false（从 HTTP 线程调用） */
+    fun navigate(tabId: String, url: String?): Boolean = MainThreadRunner.run {
+        if (liveTabs() == null) false else navigator?.invoke(tabId, url) ?: false
+    }
+
+    /** 主线程读取标签页面加载状态；标签或 WebView 不在时返回 null */
+    fun pageStatus(tabId: String): PageStatus? = MainThreadRunner.run {
+        val wv = access.tab(tabId)?.webView ?: return@run null
+        PageStatus(wv.progress, wv.url ?: "", wv.title ?: "")
     }
 
     override fun <T> onMain(timeoutMs: Long, block: (TabAccess) -> T): T = MainThreadRunner.run(timeoutMs) {
