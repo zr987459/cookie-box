@@ -20,6 +20,7 @@ class TabsBottomSheetDialog : BottomSheetDialogFragment() {
     var onTabRenameRequested: ((String) -> Unit)? = null
     var onNewTabRequested: ((isIsolated: Boolean) -> Unit)? = null
     var onDismissListener: (() -> Unit)? = null
+    var identityOf: ((TabItem) -> Pair<String, Int>)? = null
 
     private var tabList: List<TabItem> = emptyList()
     private var activeId: String = ""
@@ -55,7 +56,8 @@ class TabsBottomSheetDialog : BottomSheetDialogFragment() {
             },
             onRenameClick = { tab ->
                 onTabRenameRequested?.invoke(tab.id)
-            }
+            },
+            identityOf = { tab -> identityOf?.invoke(tab) ?: Pair("", 0) }
         )
         adapter = newAdapter
 
@@ -70,10 +72,8 @@ class TabsBottomSheetDialog : BottomSheetDialogFragment() {
                 onNewTabRequested?.invoke(false)
             }
 
-            b.btnNewIsolatedTab.setOnClickListener {
-                dismiss()
-                onNewTabRequested?.invoke(true)
-            }
+            // T-030：只保留一个「新标签」入口；新标签打开网站时再按网站决定用哪个账号
+            b.btnNewIsolatedTab.visibility = View.GONE
         }
     }
 

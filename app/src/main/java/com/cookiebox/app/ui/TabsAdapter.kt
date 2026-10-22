@@ -14,7 +14,9 @@ import com.cookiebox.app.model.TabItem
 class TabsAdapter(
     private val onTabClick: (TabItem) -> Unit,
     private val onCloseClick: (TabItem) -> Unit,
-    private val onRenameClick: (TabItem) -> Unit = {}
+    private val onRenameClick: (TabItem) -> Unit = {},
+    /** T-030：标签所属身份的显示名与颜色（由 MainActivity 的 IdentityRegistry 提供） */
+    private val identityOf: ((TabItem) -> Pair<String, Int>)? = null
 ) : RecyclerView.Adapter<TabsAdapter.TabGroupViewHolder>() {
 
     private val allTabs = mutableListOf<TabItem>()
@@ -91,9 +93,9 @@ class TabsAdapter(
         fun bind(group: TabGroup) {
             binding.tvGroupDomain.text = group.domain
 
-            val cloneCount = group.tabs.count { it.isClone }
-            binding.tvGroupBadge.text = if (cloneCount > 0) {
-                "${group.tabs.size} 个标签 (${cloneCount} 个分身)"
+            val accountCount = group.tabs.filter { !it.identityPending }.map { it.profileName }.distinct().size
+            binding.tvGroupBadge.text = if (accountCount > 1) {
+                "${group.tabs.size} 个标签 · ${accountCount} 个账号"
             } else {
                 "${group.tabs.size} 个标签"
             }
@@ -121,9 +123,29 @@ class TabsAdapter(
 
                 val isActive = tab.id == currentActiveId
                 rowBinding.tvActiveBadge.visibility = if (isActive) View.VISIBLE else View.GONE
-                rowBinding.tvIsolatedBadge.visibility = if (tab.isClone) View.VISIBLE else View.GONE
-                // T-030：分身没能真正隔离时明确标出来，不再假装是独立账号
-                rowBinding.tvIsolatedBadge.text = if (tab.isClone && !tab.isolated) "未隔离" else "多开分身"
+                // T-030：每个标签显示所属账号（颜色圆点 + 名称）；没能真正隔离时明确标「未隔离」
+                val ident = identityOf?.invoke(tab)
+                val ctx = binding.root.context
+                if (tab.identityPending || ident == null) {
+                    rowBinding.tvIsolatedBadge.visibility = View.GONE
+                } else {
+                    rowBinding.tvIsolatedBadge.visibility = View.VISIBLE
+                    val unisolated = tab.isClone && !tab.isolated
+                    rowBinding.tvIsolatedBadge.text = if (unisolated) "${ident.first} · 未隔离" else ident.first
+                    rowBinding.tvIsolatedBadge.setTextColor(
+                        androidx.core.content.ContextCompat.getColor(
+                            ctx, if (unisolated) com.cookiebox.app.R.color.danger else com.cookiebox.app.R.color.on_surface
+                        )
+                    )
+                    val dot = android.graphics.drawable.GradientDrawable().apply {
+                        shape = android.graphics.drawable.GradientDrawable.OVAL
+                        setColor(ident.second)
+                        val px = (8 * ctx.resources.displayMetrics.density).toInt()
+                        setSize(px, px)
+                    }
+                    rowBinding.tvIsolatedBadge.setCompoundDrawablesRelativeWithIntrinsicBounds(dot, null, null, null)
+                    rowBinding.tvIsolatedBadge.compoundDrawablePadding = (4 * ctx.resources.displayMetrics.density).toInt()
+                }
 
                 val pageTitle = if (tab.title.isNotBlank()) tab.title else "新标签页"
                 val pageUrl = if (tab.url.isNotBlank()) tab.url else "about:blank"

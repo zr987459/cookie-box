@@ -73,6 +73,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private lateinit var prefs: BrowserPrefs
     private lateinit var vault: AccountVault
+    private lateinit var identities: com.cookiebox.app.engine.IdentityRegistry
     private val mainHandler = Handler(Looper.getMainLooper())
 
     /** 打开网站后等待自动填入的账号：tabId -> (账号, 密码) */
@@ -163,6 +164,7 @@ class MainActivity : AppCompatActivity() {
         setContentView(binding.root)
         prefs = BrowserPrefs(this)
         vault = AccountVault(this)
+        identities = com.cookiebox.app.engine.IdentityRegistry(this)
         // AI 访问（MCP）：只注册只读标签快照，逻辑全在 mcp 包
         com.cookiebox.app.mcp.McpTabs.attach(this) { tabs.toList() }
 
@@ -197,7 +199,7 @@ class MainActivity : AppCompatActivity() {
         }
         if (!url.isNullOrBlank()) {
             val active = getActiveTab()
-            if (active != null && active.url.isBlank()) loadUrlInTab(active, url) else createNewTab(url, false)
+            if (active != null && active.url.isBlank()) loadUrlInTab(active, url) else createNewTab(url, lazy = true)
         }
     }
 
@@ -220,16 +222,19 @@ class MainActivity : AppCompatActivity() {
     private fun restoreSessionOrCreateTab() {
         val (saved, activeIndex) = prefs.loadSession()
         if (saved.isEmpty()) {
-            createNewTab(initialUrl = "", isClone = false)
+            createNewTab(initialUrl = "", lazy = true)
             return
         }
         val created = saved.map { s ->
+            // 兼容旧数据：isClone=true 的「分身」就是一个普通身份，profileName 保持不变
+            val blank = s.url.isBlank() || isSensitiveLoginPage(s.url)
+            if (s.profileName != DEFAULT_PROFILE) identities.adoptLegacyName(s.profileName, s.customName)
             createNewTab(
                 initialUrl = "",
-                isClone = s.isClone,
-                profileName = s.profileName,
+                profileName = s.profileName.takeUnless { blank && it == DEFAULT_PROFILE },
                 switchTo = false,
-                desktop = s.isDesktop
+                desktop = s.isDesktop,
+                lazy = blank
             ).also {
                 it.title = s.title.ifBlank { it.title }
                 it.customName = s.customName
@@ -237,7 +242,7 @@ class MainActivity : AppCompatActivity() {
                 // 登录流程的网址带一次性参数，重启后再打开会报 400，恢复成空白标签
                 if (isSensitiveLoginPage(s.url)) {
                     it.url = ""
-                    it.title = if (it.isClone) "网页分身" else "新标签页"
+                    it.title = "新标签页"
                 } else {
                     it.pendingUrl = s.url.takeIf { u -> u.isNotBlank() }
                 }
@@ -286,32 +291,66 @@ class MainActivity : AppCompatActivity() {
         if (copiedSites > 0) android.util.Log.i("CookieBox/Profile", "默认身份迁移：复制了 $copiedSites 个站点的登录状态")
     }
 
-    // ==================== 多窗口与多账号网页分身 ====================
+    // ==================== 标签 = 网站 + 身份（账号） ====================
 
-    @SuppressLint("SetJavaScriptEnabled")
     private fun createNewTab(
         initialUrl: String = "",
         isClone: Boolean = false,
         profileName: String? = null,
         openerId: String? = null,
         switchTo: Boolean = true,
-        desktop: Boolean = false
+        desktop: Boolean = false,
+        /** true = 空白标签：先不建 WebView，等知道要去哪个站再决定身份（T-030） */
+        lazy: Boolean = false
     ): TabItem {
         val tabId = UUID.randomUUID().toString()
-        val resolvedProfile = profileName ?: if (isClone) {
-            "Profile_Clone_${UUID.randomUUID().toString().take(8)}"
-        } else {
-            DEFAULT_PROFILE
+        val resolvedProfile = profileName ?: if (isClone) newProfileName() else DEFAULT_PROFILE
+        val newTab = TabItem(
+            id = tabId,
+            title = "新标签页",
+            url = initialUrl,
+            isDesktop = desktop,
+            isClone = resolvedProfile != DEFAULT_PROFILE,
+            profileName = resolvedProfile,
+            webView = null,
+            openerId = openerId,
+            identityPending = lazy && profileName == null && !isClone
+        )
+        identities.ensure(resolvedProfile)
+        if (!lazy) attachWebView(newTab)
+
+        tabs.add(newTab)
+        if (switchTo) switchTab(tabId) else updateTabBadge()
+
+        if (initialUrl.isNotBlank()) {
+            loadUrlInTab(newTab, initialUrl)
         }
 
+        return newTab
+    }
+
+    /** 新身份的 Profile 名（沿用旧前缀，旧版的清理逻辑与 MCP 授权都认这个格式） */
+    private fun newProfileName(): String = "Profile_Clone_${UUID.randomUUID().toString().take(8)}"
+
+    /**
+     * 给标签建 WebView 并绑定它的身份。空白标签延迟到这里才建，所以 setProfile 一定是对 WebView 的第一个调用。
+     */
+    @SuppressLint("SetJavaScriptEnabled")
+    private fun attachWebView(newTab: TabItem) {
+        if (newTab.webView != null) return
+        newTab.identityPending = false
+        val desktop = newTab.isDesktop
         // ⚠️ 调用顺序不能变（T-030）：new WebView 之后第一件事就是绑定身份，
         // 之后才能访问 settings、设置 client、写 Cookie 策略。详见 ProfileIsolation 类注释。
         val webView = WebView(this)
-        val isolation = ProfileIsolation.attach(webView, resolvedProfile)
+        val isolation = ProfileIsolation.attach(webView, newTab.profileName)
         webView.layoutParams = ViewGroup.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.MATCH_PARENT
         )
+        newTab.webView = webView
+        newTab.isolated = isolation.isolated
+        newTab.isolationError = isolation.error
 
         val settings = webView.settings
         if (defaultMobileUa.isEmpty()) {
@@ -338,28 +377,11 @@ class MainActivity : AppCompatActivity() {
         settings.setSupportMultipleWindows(true)
         settings.javaScriptCanOpenWindowsAutomatically = true
 
-        val newTab = TabItem(
-            id = tabId,
-            title = if (isClone) "网页分身" else "新标签页",
-            url = initialUrl,
-            isDesktop = desktop,
-            isClone = isClone,
-            profileName = resolvedProfile,
-            webView = webView,
-            openerId = openerId,
-            isolated = isolation.isolated,
-            isolationError = isolation.error
-        )
-        // 分身标签里打开的新窗口属于同一个账号，沿用打开者的自定义名
-        tabs.firstOrNull { it.id == openerId }?.let { opener ->
-            if (opener.isClone && opener.profileName == resolvedProfile) newTab.customName = opener.customName
-        }
-
         // 身份已在 new WebView 之后立刻绑定；这里只设置该身份 CookieManager 的接收策略
         newTab.customCookieManager = isolation.cookieManager
         isolation.cookieManager.setAcceptCookie(true)
         isolation.cookieManager.setAcceptThirdPartyCookies(webView, true)
-        if (isClone && !isolation.isolated) warnIsolationUnavailable()
+        if (newTab.isClone && !isolation.isolated) warnIsolationUnavailable()
 
         webView.webChromeClient = object : WebChromeClient() {
             override fun onReceivedTitle(view: WebView?, title: String?) {
@@ -531,14 +553,11 @@ class MainActivity : AppCompatActivity() {
         // 长按链接 / 图片
         webView.setOnLongClickListener { showLongPressMenu(newTab) }
 
-        tabs.add(newTab)
-        if (switchTo) switchTab(tabId) else updateTabBadge()
-
-        if (initialUrl.isNotBlank()) {
-            loadUrlInTab(newTab, initialUrl)
+        // 当前正显示这个标签：把刚建好的 WebView 放进容器
+        if (newTab.id == activeTabId) {
+            binding.layoutWebContainer.removeAllViews()
+            binding.layoutWebContainer.addView(webView)
         }
-
-        return newTab
     }
 
     /**
@@ -613,9 +632,9 @@ class MainActivity : AppCompatActivity() {
         isolationWarned = true
         binding.root.post {
             AlertDialog.Builder(this)
-                .setTitle("分身无法隔离")
+                .setTitle("账号无法隔离")
                 .setMessage(ProfileIsolation.UNSUPPORTED_TIP + "\n\n当前：" + ProfileIsolation.webViewVersion(this) +
-                        "\n\n在此之前，标有「未隔离」的分身标签与默认身份共用同一份登录状态。")
+                        "\n\n在此之前，标有「未隔离」的账号标签与主账号共用同一份登录状态。")
                 .setPositiveButton("知道了", null)
                 .setNeutralButton("查看诊断") { _, _ -> showIsolationDiagnostics() }
                 .show()
@@ -626,7 +645,7 @@ class MainActivity : AppCompatActivity() {
     private fun ensureCanIsolate(): Boolean {
         if (ProfileIsolation.canIsolate()) return true
         AlertDialog.Builder(this)
-            .setTitle("无法新建分身")
+            .setTitle("无法新建账号")
             .setMessage(ProfileIsolation.UNSUPPORTED_TIP + "\n\n当前：" + ProfileIsolation.webViewVersion(this))
             .setPositiveButton("知道了", null)
             .setNeutralButton("查看诊断") { _, _ -> showIsolationDiagnostics() }
@@ -643,12 +662,13 @@ class MainActivity : AppCompatActivity() {
         tabs.forEachIndexed { i, t ->
             val name = t.customName.ifBlank { t.title.ifBlank { "新标签页" } }.take(18)
             sb.append(i + 1).append(". ").append(name).append('\n')
-            sb.append("   身份：").append(t.profileName).append(if (t.isClone) "（分身）" else "（默认）").append('\n')
+            sb.append("   身份：").append(identities.name(t.profileName)).append("（").append(t.profileName).append("）")
+                .append(if (t.identityPending) " 待定" else "").append('\n')
             sb.append("   隔离：").append(if (t.isolated) "✓ 独立" else "✗ 未隔离").append('\n')
             t.isolationError?.let { sb.append("   原因：").append(it.take(160)).append('\n') }
         }
         AlertDialog.Builder(this)
-            .setTitle("分身诊断")
+            .setTitle("账号隔离诊断")
             .setMessage(sb.toString())
             .setPositiveButton("关闭", null)
             .setNeutralButton("复制") { _, _ -> copyText(sb.toString(), "已复制诊断信息", isSensitive = false) }
@@ -661,6 +681,8 @@ class MainActivity : AppCompatActivity() {
         closeFindBar()
 
         // 仅切换可见容器，各 Profile 保持完全独立的 Cookie 会话，绝不清除，绝不掉线！
+        targetTab.lastActiveAt = System.currentTimeMillis()
+        hideIdentityChooser()
         binding.layoutWebContainer.removeAllViews()
         targetTab.webView?.let {
             if (it.parent != null) {
@@ -696,8 +718,8 @@ class MainActivity : AppCompatActivity() {
         val profileStillUsed = tabs.any { it.id != tabId && it.profileName == tab.profileName }
         if (tab.isClone && !profileStillUsed) {
             AlertDialog.Builder(this)
-                .setTitle("关闭分身标签？")
-                .setMessage("关闭后这个分身的登录状态会被删除。需要保留的话，先点「提取」→「保存至储存库」。")
+                .setTitle("关闭「${identities.name(tab.profileName)}」的最后一个标签？")
+                .setMessage("关闭后这个账号的登录状态会被删除。需要保留的话，先点「提取」→「保存至储存库」。")
                 .setPositiveButton("关闭并删除") { _, _ -> closeTab(tabId) }
                 .setNegativeButton("取消", null)
                 .show()
@@ -724,13 +746,14 @@ class MainActivity : AppCompatActivity() {
         ) {
             try {
                 ProfileStore.getInstance().deleteProfile(removingTab.profileName)
+                identities.forget(removingTab.profileName)
             } catch (e: Exception) {
                 e.printStackTrace()
             }
         }
 
         if (tabs.isEmpty()) {
-            createNewTab(initialUrl = "", isClone = false)
+            createNewTab(initialUrl = "", lazy = true)
         } else if (tabId == activeTabId) {
             val opener = tabs.find { it.id == removingTab.openerId }
             if (opener != null) {
@@ -746,13 +769,15 @@ class MainActivity : AppCompatActivity() {
         refreshTabsDialog()
     }
 
+    /** 重命名身份（账号）：同一身份的所有标签一起改名 */
     private fun showRenameTabDialog(tabId: String) {
         val tab = tabs.firstOrNull { it.id == tabId } ?: return
+        val profile = tab.profileName
         val pad = (20 * resources.displayMetrics.density).toInt()
         val input = android.widget.EditText(this).apply {
-            setText(tab.customName)
+            setText(identities.customName(profile))
             setSelection(text.length)
-            hint = tab.title.ifBlank { "例如：B站大号、微博小号2" }
+            hint = identities.name(profile) + "，例如：B站大号、微博小号2"
             isSingleLine = true
             filters = arrayOf(android.text.InputFilter.LengthFilter(MAX_TAB_NAME_LENGTH))
         }
@@ -761,13 +786,11 @@ class MainActivity : AppCompatActivity() {
             addView(input)
         }
         val builder = AlertDialog.Builder(this)
-            .setTitle("标签名称")
+            .setTitle("账号名称")
             .setView(container)
-            .setPositiveButton("保存") { _, _ ->
-                applyTabName(tab, input.text.toString())
-            }
+            .setPositiveButton("保存") { _, _ -> applyTabName(tab, input.text.toString()) }
             .setNegativeButton("取消", null)
-        if (tab.customName.isNotBlank()) {
+        if (identities.customName(profile).isNotBlank()) {
             builder.setNeutralButton("恢复默认") { _, _ -> applyTabName(tab, "") }
         }
         builder.show()
@@ -775,9 +798,14 @@ class MainActivity : AppCompatActivity() {
 
     private fun applyTabName(tab: TabItem, raw: String) {
         // 去掉换行与首尾空白，避免列表错位；只存本机，不含任何凭据
-        tab.customName = raw.replace(Regex("\\s+"), " ").trim().take(MAX_TAB_NAME_LENGTH)
+        identities.rename(tab.profileName, raw)
+        // 旧字段保持同步，降级到旧版时标签名仍在
+        tabs.filter { it.profileName == tab.profileName }.forEach {
+            it.customName = identities.customName(tab.profileName)
+        }
         saveSession()
         refreshTabsDialog()
+        onIdentitiesChanged()
     }
 
     private fun refreshTabsDialog() {
@@ -824,6 +852,14 @@ class MainActivity : AppCompatActivity() {
     private fun loadUrlInTab(tab: TabItem, input: String) {
         val targetUrl = resolveInput(input)
         if (targetUrl.isEmpty()) return
+        if (tab.webView == null) {
+            if (tab.identityPending) {
+                // 空白标签第一次去某个站：先决定身份，再建 WebView（setProfile 因此排在最前）
+                chooseIdentityFor(tab, targetUrl)
+                return
+            }
+            attachWebView(tab)
+        }
 
         tab.url = targetUrl
         tab.pendingUrl = null
@@ -838,7 +874,7 @@ class MainActivity : AppCompatActivity() {
     private fun goHome() {
         val tab = getActiveTab() ?: return
         tab.url = ""
-        tab.title = if (tab.isClone) "网页分身" else "新标签页"
+        tab.title = "新标签页"
         tab.webView?.stopLoading()
         tab.webView?.loadUrl("about:blank")
         binding.etUrl.setText("")
@@ -924,6 +960,14 @@ class MainActivity : AppCompatActivity() {
             )
         }
 
+        // 复用的空白标签可能还没建 WebView（T-030 延迟创建）：先按目标身份建好，Cookie 才会写进正确的 Profile
+        if (targetTab.webView == null) {
+            if (profileName != null) {
+                targetTab.profileName = profileName
+                targetTab.isClone = profileName != DEFAULT_PROFILE
+            }
+            attachWebView(targetTab)
+        }
         // 新身份没能隔离（setProfile 失败）：写进去就等于覆盖默认身份，宁可不写
         if (targetTab.profileName != DEFAULT_PROFILE && !targetTab.isolated && forceTab == null && profileName == null) {
             closeTab(targetTab.id)
@@ -1087,7 +1131,7 @@ class MainActivity : AppCompatActivity() {
         binding.btnNavHome.setOnClickListener { goHome() }
         binding.btnNavTabs.setOnClickListener { openTabsDialog() }
         binding.btnNavTabs.setOnLongClickListener {
-            createNewTab(initialUrl = "", isClone = false)
+            createNewTab(initialUrl = "", lazy = true)
             toast("已新建标签页")
             true
         }
@@ -1107,8 +1151,7 @@ class MainActivity : AppCompatActivity() {
         val hasPage = tab != null && tab.url.isNotBlank()
         val popup = PopupMenu(this, anchor)
         val m = popup.menu
-        m.add(0, 1, 0, "新建标签页")
-        m.add(0, 2, 1, "新建分身标签（另一个账号）")
+        m.add(0, 1, 0, "新标签页")
         if (hasPage) {
             m.add(0, 3, 2, "页内查找")
             m.add(0, 4, 3, "翻译为中文")
@@ -1129,13 +1172,12 @@ class MainActivity : AppCompatActivity() {
         m.add(0, 13, 1, "账号管理（账号密码）")
         if (hasPage) m.add(0, 14, 2, "保存本页填写的账号密码")
         m.add(0, 15, 12, "AI 访问（MCP）")
-        m.add(0, 16, 13, "分身诊断")
+        m.add(0, 16, 13, "账号隔离诊断")
 
         popup.setOnMenuItemClickListener { item ->
             val wv = tab?.webView
             when (item.itemId) {
-                1 -> createNewTab(initialUrl = "", isClone = false)
-                2 -> if (ensureCanIsolate()) createNewTab(initialUrl = "", isClone = true)
+                1 -> createNewTab(initialUrl = "", lazy = true)
                 3 -> openFindBar()
                 4 -> wv?.let {
                     toast("正在翻译为中文...")
@@ -1242,7 +1284,7 @@ class MainActivity : AppCompatActivity() {
                 createNewTab(link, tab.isClone, tab.profileName, openerId = tab.id, switchTo = false, desktop = tab.isDesktop)
                 toast("已在后台打开")
             }
-            labels += "在新分身中打开（另一个账号）"
+            labels += "用新账号打开"
             actions += { if (ensureCanIsolate()) createNewTab(link, isClone = true) }
             labels += "复制链接"
             actions += { copyText(link, "已复制链接") }
@@ -1471,10 +1513,9 @@ class MainActivity : AppCompatActivity() {
         dialog.onTabSelected = { tabId -> switchTab(tabId) }
         dialog.onTabClosed = { tabId -> requestCloseTab(tabId) }
         dialog.onTabRenameRequested = { tabId -> showRenameTabDialog(tabId) }
-        dialog.onNewTabRequested = { isClone ->
-            if (!isClone || ensureCanIsolate()) createNewTab(initialUrl = "", isClone = isClone)
-        }
+        dialog.onNewTabRequested = { _ -> createNewTab(initialUrl = "", lazy = true) }
         dialog.onDismissListener = { tabsDialog = null }
+        dialog.identityOf = { t -> Pair(identities.name(t.profileName), identities.color(t.profileName)) }
         dialog.show(supportFragmentManager, "TabsBottomSheet")
         dialog.setTabsData(tabs, activeTabId)
     }
@@ -1666,10 +1707,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun showClearCookiesDialog() {
         val activeTab = getActiveTab() ?: return
-        val who = if (activeTab.isClone) "这个分身" else "默认身份（所有非分身标签）"
+        val who = "账号「${identities.name(activeTab.profileName)}」"
         AlertDialog.Builder(this)
             .setTitle("清除 Cookie 和缓存")
-            .setMessage("将清除$who 的全部 Cookie、网站存储和缓存，并登出其中所有账号。其他分身不受影响。")
+            .setMessage("将清除$who 的全部 Cookie、网站存储和缓存，并登出其中所有网站。其他账号不受影响。")
             .setPositiveButton("立即清除") { _, _ ->
                 val cm = activeTab.customCookieManager ?: CookieManager.getInstance()
                 cm.removeAllCookies {
@@ -1695,6 +1736,151 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) {
             e.printStackTrace()
         }
+    }
+
+    // ---------- T-030：身份（账号）选择 ----------
+
+    private val storageRepo by lazy { com.cookiebox.app.engine.CookieStorageRepository(this) }
+    private var chooserCountdown: Runnable? = null
+
+    /** 标签所在网站（注册域名），空白标签返回空串 */
+    private fun siteOf(tab: TabItem): String = siteOfUrl(tab.webView?.url?.takeIf { it != "about:blank" } ?: tab.url)
+
+    private fun siteOfUrl(url: String?): String {
+        val host = try { Uri.parse(url ?: "").host } catch (e: Exception) { null } ?: return ""
+        return DomainUtils.getRootDomain(host).ifBlank { host }
+    }
+
+    /** 小圆点（身份颜色） */
+    private fun identityDot(color: Int, sizeDp: Int = 10): android.graphics.drawable.GradientDrawable =
+        android.graphics.drawable.GradientDrawable().apply {
+            shape = android.graphics.drawable.GradientDrawable.OVAL
+            setColor(color)
+            val px = (sizeDp * resources.displayMetrics.density).toInt()
+            setSize(px, px)
+        }
+
+    /**
+     * 空白标签第一次要去 [url]：
+     * - 这个站还没有打开的标签 → 直接用主账号，不打扰；
+     * - 已经有这个站的标签 → 弹出小底栏让用户选账号（默认选上次用的，3 秒不操作就用它）；
+     *   储存库里该站保存的账号也列出来（选中会建一个新身份并写入 Cookie）。
+     */
+    private fun chooseIdentityFor(tab: TabItem, url: String) {
+        val site = siteOfUrl(url)
+        val siteProfiles = tabs.filter { it.id != tab.id && it.webView != null && siteOf(it) == site }
+            .sortedByDescending { it.lastActiveAt }
+            .map { it.profileName }
+            .distinct()
+        val openWith: (String) -> Unit = { profile ->
+            hideIdentityChooser()
+            tab.profileName = profile
+            tab.isClone = profile != DEFAULT_PROFILE
+            identities.ensure(profile)
+            attachWebView(tab)
+            loadUrlInTab(tab, url)
+            onIdentitiesChanged()
+        }
+        if (site.isBlank() || siteProfiles.isEmpty()) {
+            openWith(DEFAULT_PROFILE)
+            return
+        }
+        if (!ProfileIsolation.canIsolate()) {
+            // 不能隔离：没有「新账号」可选，直接用这个站上次用的身份
+            openWith(siteProfiles.first())
+            return
+        }
+        val records = try {
+            storageRepo.getAllRecords().filter { siteOfUrl("https://" + it.domain.trimStart('.')) == site }
+        } catch (e: Exception) { emptyList() }
+
+        val chips = binding.layoutChooserChips
+        chips.removeAllViews()
+        val defaultProfile = siteProfiles.first()
+        fun addChip(label: String, dotColor: Int?, checked: Boolean, onPick: () -> Unit) {
+            val chip = Chip(this).apply {
+                text = label
+                isCheckable = true
+                isChecked = checked
+                isCheckedIconVisible = false
+                if (dotColor != null) {
+                    chipIcon = identityDot(dotColor, 12)
+                    isChipIconVisible = true
+                } else {
+                    setChipIconResource(R.drawable.ic_add)
+                    isChipIconVisible = true
+                }
+                setOnClickListener { onPick() }
+                val lp = android.widget.LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+                lp.marginEnd = (8 * resources.displayMetrics.density).toInt()
+                layoutParams = lp
+            }
+            chips.addView(chip)
+        }
+        siteProfiles.forEach { p ->
+            addChip(identities.name(p), identities.color(p), p == defaultProfile) { openWith(p) }
+        }
+        records.forEach { r ->
+            addChip("储存库 · " + r.title.ifBlank { r.domain }.take(14), null, false) {
+                hideIdentityChooser()
+                val profile = newProfileName()
+                tab.profileName = profile
+                tab.isClone = true
+                identities.ensure(profile)
+                identities.rename(profile, r.title.ifBlank { r.domain })
+                attachWebView(tab)
+                if (!tab.isolated) {
+                    // 绑定失败就不写，避免覆盖主账号
+                    warnIsolationUnavailable()
+                    loadUrlInTab(tab, url)
+                } else {
+                    writeRecordCookies(r, profile, forceTab = tab)
+                }
+                onIdentitiesChanged()
+            }
+        }
+        addChip("新账号", null, false) { openWith(newProfileName()) }
+
+        binding.tvChooserTitle.text = "用哪个账号打开 $site？"
+        binding.cardIdentityChooser.visibility = View.VISIBLE
+        binding.btnChooserClose.setOnClickListener { hideIdentityChooser() }
+        // 用户开始滑动/触摸选项，就不再自动选择
+        binding.scrollChooserChips.setOnTouchListener { _, _ -> cancelChooserCountdown(); false }
+
+        var remain = 3
+        val tick = object : Runnable {
+            override fun run() {
+                if (binding.cardIdentityChooser.visibility != View.VISIBLE) return
+                if (remain <= 0) {
+                    openWith(defaultProfile)
+                    return
+                }
+                binding.tvChooserHint.text = "${remain} 秒后用「${identities.name(defaultProfile)}」打开"
+                remain--
+                mainHandler.postDelayed(this, 1000)
+            }
+        }
+        chooserCountdown = tick
+        tick.run()
+    }
+
+    private fun cancelChooserCountdown() {
+        chooserCountdown?.let { mainHandler.removeCallbacks(it) }
+        chooserCountdown = null
+        binding.tvChooserHint.text = "点一个账号打开"
+    }
+
+    private fun hideIdentityChooser() {
+        chooserCountdown?.let { mainHandler.removeCallbacks(it) }
+        chooserCountdown = null
+        if (::binding.isInitialized) binding.cardIdentityChooser.visibility = View.GONE
+    }
+
+    /** 身份名称/颜色或标签归属变化后刷新相关界面（标签面板、底部账号胶囊栏） */
+    private fun onIdentitiesChanged() {
+        refreshTabsDialog()
     }
 
     // ---------- 首页快捷入口 ----------
