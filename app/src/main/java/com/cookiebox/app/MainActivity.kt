@@ -30,7 +30,6 @@ import android.webkit.WebSettings
 import android.webkit.WebStorage
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import android.widget.PopupMenu
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
@@ -555,6 +554,8 @@ class MainActivity : AppCompatActivity() {
 
         // 长按链接 / 图片
         webView.setOnLongClickListener { showLongPressMenu(newTab) }
+        // 上滑收起顶栏/底栏，下滑出现（T-030）
+        webView.setOnScrollChangeListener { _, _, y, _, oldY -> onWebScrolled(newTab, y, y - oldY) }
 
         // 当前正显示这个标签：把刚建好的 WebView 放进容器
         if (newTab.id == activeTabId) {
@@ -686,6 +687,7 @@ class MainActivity : AppCompatActivity() {
         // 仅切换可见容器，各 Profile 保持完全独立的 Cookie 会话，绝不清除，绝不掉线！
         targetTab.lastActiveAt = System.currentTimeMillis()
         hideIdentityChooser()
+        if (::binding.isInitialized) showBars()
         binding.layoutWebContainer.removeAllViews()
         targetTab.webView?.let {
             if (it.parent != null) {
@@ -1096,6 +1098,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
         binding.etUrl.setOnFocusChangeListener { _, hasFocus ->
+            if (hasFocus) showBars()
             updateUrlBarButtons()
             if (!hasFocus) {
                 // 放弃编辑时还原为当前网址
@@ -1116,7 +1119,6 @@ class MainActivity : AppCompatActivity() {
             if (binding.progressBar.visibility == View.VISIBLE) wv.stopLoading() else wv.reload()
         }
 
-        binding.btnMenu.setOnClickListener { showMainMenu(it) }
 
         // 页内查找
         binding.etFind.setOnEditorActionListener { _, _, _ ->
@@ -1150,14 +1152,13 @@ class MainActivity : AppCompatActivity() {
             val wv = getActiveTab()?.webView
             if (wv != null && wv.canGoForward()) wv.goForward()
         }
-        binding.btnNavHome.setOnClickListener { goHome() }
         binding.btnNavTabs.setOnClickListener { openTabsDialog() }
         binding.btnNavTabs.setOnLongClickListener {
             createNewTab(initialUrl = "", lazy = true)
             toast("已新建标签页")
             true
         }
-        binding.btnNavStorage.setOnClickListener { openStorageDialog() }
+        binding.btnNavMore.setOnClickListener { showMoreSheet() }
         binding.btnNavExtract.setOnClickListener { openCookieSheet() }
     }
 
@@ -1168,67 +1169,53 @@ class MainActivity : AppCompatActivity() {
         binding.btnRefresh.visibility = if (focused) View.GONE else View.VISIBLE
     }
 
-    private fun showMainMenu(anchor: View) {
+    /** T-030：「更多」底部面板（替代原 15 行 PopupMenu）。没有页面时不可用的项置灰 */
+    private fun showMoreSheet() {
         val tab = getActiveTab()
-        val hasPage = tab != null && tab.url.isNotBlank()
-        val popup = PopupMenu(this, anchor)
-        val m = popup.menu
-        m.add(0, 1, 0, "新标签页")
-        if (hasPage) {
-            m.add(0, 3, 2, "页内查找")
-            m.add(0, 4, 3, "翻译为中文")
-            m.add(0, 5, 4, "缩放与翻译工具")
-        }
-        m.add(0, 6, 5, "桌面版网站").apply {
-            isCheckable = true
-            isChecked = tab?.isDesktop == true
-        }
-        if (hasPage) {
-            m.add(0, 7, 6, "添加到首页快捷入口")
-            m.add(0, 8, 7, "复制链接")
-            m.add(0, 9, 8, "分享网页")
-            m.add(0, 10, 9, "用其他浏览器打开")
-        }
-        m.add(0, 11, 10, "搜索引擎：${prefs.searchEngine}")
-        m.add(0, 12, 11, "清除当前身份的 Cookie 和缓存")
-        m.add(0, 13, 1, "账号管理（账号密码）")
-        if (hasPage) m.add(0, 14, 2, "保存本页填写的账号密码")
-        m.add(0, 15, 12, "AI 访问（MCP）")
-        m.add(0, 16, 13, "账号隔离诊断")
-
-        popup.setOnMenuItemClickListener { item ->
-            val wv = tab?.webView
-            when (item.itemId) {
-                1 -> createNewTab(initialUrl = "", lazy = true)
-                3 -> openFindBar()
-                4 -> wv?.let {
+        val wv = tab?.webView
+        val hasPage = tab != null && tab.url.isNotBlank() && wv != null
+        val pageUrl = { wv?.url?.takeIf { it != "about:blank" } ?: tab?.url.orEmpty() }
+        val grid = listOf(
+            com.cookiebox.app.ui.MoreSheet.Item("储存库", R.drawable.ic_storage) { openStorageDialog() },
+            com.cookiebox.app.ui.MoreSheet.Item("账号密码", R.drawable.ic_key) { openAccountsDialog() },
+            com.cookiebox.app.ui.MoreSheet.Item("页内查找", R.drawable.ic_search, hasPage) { openFindBar() },
+            com.cookiebox.app.ui.MoreSheet.Item("翻译", R.drawable.ic_translate, hasPage) {
+                wv?.let {
                     toast("正在翻译为中文...")
                     WebTranslator.translateInPage(it, "zh-CN") { msg -> toast(msg) }
                 }
-                5 -> openToolsDialog()
-                6 -> toggleActiveTabUserAgent()
-                7 -> tab?.let {
-                    val url = wv?.url ?: it.url
-                    if (prefs.addShortcut(it.title, url)) {
+            },
+            com.cookiebox.app.ui.MoreSheet.Item(
+                "桌面版", R.drawable.ic_desktop, tab != null, checked = tab?.isDesktop == true
+            ) { toggleActiveTabUserAgent() },
+            com.cookiebox.app.ui.MoreSheet.Item("分享", R.drawable.ic_share, hasPage) { tab?.let { shareText(pageUrl(), it.title) } }
+        )
+        val list = mutableListOf(
+            com.cookiebox.app.ui.MoreSheet.Item("主页", R.drawable.ic_home, hasPage) { goHome() },
+            com.cookiebox.app.ui.MoreSheet.Item("加到首页快捷入口", R.drawable.ic_add, hasPage) {
+                tab?.let {
+                    if (prefs.addShortcut(it.title, pageUrl())) {
                         renderShortcuts()
                         toast("已添加到首页")
                     } else {
                         toast("首页已有这个网址")
                     }
                 }
-                8 -> tab?.let { copyText(wv?.url ?: it.url, "已复制链接") }
-                9 -> tab?.let { shareText(wv?.url ?: it.url, it.title) }
-                10 -> tab?.let { openExternally(wv?.url ?: it.url) }
-                11 -> chooseSearchEngine()
-                12 -> showClearCookiesDialog()
-                13 -> openAccountsDialog()
-                14 -> tab?.let { saveCurrentPageLogin(it) }
-                15 -> startActivity(Intent(this, com.cookiebox.app.mcp.McpSettingsActivity::class.java))
-                16 -> showIsolationDiagnostics()
-            }
-            true
-        }
-        popup.show()
+            },
+            com.cookiebox.app.ui.MoreSheet.Item("复制链接", R.drawable.ic_copy, hasPage) { copyText(pageUrl(), "已复制链接") },
+            com.cookiebox.app.ui.MoreSheet.Item("用其他浏览器打开", R.drawable.ic_open_in_browser, hasPage) { openExternally(pageUrl()) },
+            com.cookiebox.app.ui.MoreSheet.Item("保存本页填写的账号密码", R.drawable.ic_save, hasPage) { tab?.let { saveCurrentPageLogin(it) } },
+            com.cookiebox.app.ui.MoreSheet.Item("缩放与翻译工具", R.drawable.ic_zoom_in, hasPage) { openToolsDialog() },
+            com.cookiebox.app.ui.MoreSheet.Item("搜索引擎：${prefs.searchEngine}", R.drawable.ic_public) { chooseSearchEngine() },
+            com.cookiebox.app.ui.MoreSheet.Item(
+                "清除当前账号的数据", R.drawable.ic_delete, tab != null && !tab.identityPending
+            ) { showClearCookiesDialog() },
+            com.cookiebox.app.ui.MoreSheet.Item("AI 访问（MCP）", R.drawable.ic_bolt) {
+                startActivity(Intent(this, com.cookiebox.app.mcp.McpSettingsActivity::class.java))
+            },
+            com.cookiebox.app.ui.MoreSheet.Item("账号隔离诊断", R.drawable.ic_lock) { showIsolationDiagnostics() }
+        )
+        com.cookiebox.app.ui.MoreSheet(this).show(grid, list)
     }
 
     private fun chooseSearchEngine() {
@@ -1725,6 +1712,7 @@ class MainActivity : AppCompatActivity() {
 
         val dialog = CookieBottomSheetDialog.newInstance(currentUrl, currentTitle, currentUa)
         dialog.customCookieManager = tab?.customCookieManager
+        dialog.onOpenStorage = { openStorageDialog() }
         dialog.show(supportFragmentManager, "CookieBottomSheet")
     }
 
@@ -1930,14 +1918,7 @@ class MainActivity : AppCompatActivity() {
         val bar = binding.layoutIdentityBar
         val show = reps.size >= 2 && binding.cardIdentityChooser.visibility != View.VISIBLE
         binding.scrollIdentityBar.visibility = if (show) View.VISIBLE else View.GONE
-        // 胶囊栏显示时，网页底部再让出一条，避免遮住页面内容
-        val lp = binding.layoutContentArea.layoutParams as ViewGroup.MarginLayoutParams
-        val base = resources.getDimensionPixelSize(R.dimen.cb_dock_clearance)
-        val extra = if (show) (52 * resources.displayMetrics.density).toInt() else 0
-        if (lp.bottomMargin != base + extra) {
-            lp.bottomMargin = base + extra
-            binding.layoutContentArea.layoutParams = lp
-        }
+        applyContentBottomMargin()
         if (!show) {
             bar.removeAllViews()
             return
@@ -1978,6 +1959,55 @@ class MainActivity : AppCompatActivity() {
             layoutParams = lp()
         }
         bar.addView(plus)
+    }
+
+    // ---------- T-030：上滑网页收起顶栏和底栏，下滑出现 ----------
+
+    private var barsHidden = false
+    private var scrollAccum = 0
+
+    /** 网页底部让出的空间：底栏收起时为 0；胶囊栏显示时再让出 52dp，避免遮住页面内容 */
+    private fun applyContentBottomMargin() {
+        val lp = binding.layoutContentArea.layoutParams as ViewGroup.MarginLayoutParams
+        val want = if (barsHidden) 0 else {
+            resources.getDimensionPixelSize(R.dimen.cb_dock_clearance) +
+                    if (binding.scrollIdentityBar.visibility == View.VISIBLE) (52 * resources.displayMetrics.density).toInt() else 0
+        }
+        if (lp.bottomMargin != want) {
+            lp.bottomMargin = want
+            binding.layoutContentArea.layoutParams = lp
+        }
+    }
+
+    private fun onWebScrolled(tab: TabItem, scrollY: Int, dy: Int) {
+        if (tab.id != activeTabId) return
+        if (scrollY <= 0) { showBars(); return }
+        if ((dy > 0) != (scrollAccum > 0)) scrollAccum = 0
+        scrollAccum += dy
+        val d = resources.displayMetrics.density
+        if (scrollAccum > 48 * d) hideBars() else if (scrollAccum < -24 * d) showBars()
+    }
+
+    private fun hideBars() {
+        if (barsHidden || binding.etUrl.isFocused || binding.layoutFindBar.visibility == View.VISIBLE ||
+            binding.cardIdentityChooser.visibility == View.VISIBLE) return
+        barsHidden = true
+        binding.appBarLayout.setExpanded(false, true)
+        val dy = (binding.bottomAppBar.height + resources.getDimensionPixelSize(R.dimen.cb_dock_margin_bottom)).toFloat() +
+                (60 * resources.displayMetrics.density)
+        binding.bottomAppBar.animate().translationY(dy).setDuration(180).start()
+        binding.scrollIdentityBar.animate().translationY(dy).setDuration(180).start()
+        applyContentBottomMargin()
+    }
+
+    private fun showBars() {
+        scrollAccum = 0
+        if (!barsHidden) return
+        barsHidden = false
+        binding.appBarLayout.setExpanded(true, true)
+        binding.bottomAppBar.animate().translationY(0f).setDuration(180).start()
+        binding.scrollIdentityBar.animate().translationY(0f).setDuration(180).start()
+        applyContentBottomMargin()
     }
 
     /** 「＋」：用一个新身份打开当前网站的首页 */

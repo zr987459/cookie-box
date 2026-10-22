@@ -2,6 +2,22 @@
 
 模板见 AGENTS.md 第 6 节。
 
+## 2026-10-23 CST · 开发者（Hark） · T-030（第一至第五节）
+- 分支 / 提交：task/T-030-tabs-identity（从 main @ 7e49d7c 切出；v1.13.0，versionCode 34），五个阶段各一个提交，每个阶段都经 workflow_dispatch 在 CI 打出 APK
+- 完成：
+  - 一、ProfileIsolation：new WebView 后第一件事 setProfile；失败 / 不支持 MULTI_PROFILE 时 isolated=false + 提示升级 WebView + 禁用新账号入口；储存库进入绝不覆盖已有身份；MCP cookieManagerFor 同一规则；菜单「账号隔离诊断」
+  - 二、只留「新标签」；空白标签延迟建 WebView，打开网站时按站点选账号（该站无标签→主账号；有标签→选账号小底栏，3 秒默认上次用的，含储存库记录与新账号）；IdentityRegistry（主账号 / 账号 N + 8 色圆点，按身份改名）
+  - 三、同站 ≥2 账号时底部胶囊栏，点即 switchTab 不重载；「＋ 新账号」；长按重命名 / 保存到储存库 / 关闭；地址栏左右滑切标签
+  - 四、标签面板按网站分组（favicon / 网站名 / 数量），行 = 圆点 + 账号名 + 标题，左滑关闭，右上「＋」，底部「全部关闭」，按最近使用排序
+  - 五、底栏 5 键（后退 / 前进 / 标签 / 提取 / 更多）；地址栏去掉菜单键；「更多」改为底部面板（6 格网格 + 短列表，无页面时置灰）；储存库进「更多」最上方与提取面板；上滑收起顶栏底栏、下滑出现
+- 未完成 / 风险：
+  - 根因未真机确认：Chromium 只在已导航 / 已 evaluateJavascript / 已 getProfile / 已设过时让 setProfile 抛异常，先访问 settings 不在其中；另一可能是系统 WebView < 110。请在真机打开「更多 → 账号隔离诊断」确认
+  - 登录后自动取昵称作为账号名未做（计划标注不强求）
+  - 第六节（T-029 页面工具 rebase + snapshot / list_tabs / switch_identity）未开始
+- 兼容性验证：本地 JDK 17 + SDK 34 assembleDebug 通过，CI 通过；未真机验证。browser_prefs 只新增 identities（损坏备份 identities_corrupt）、t030_default_identity_migrated；仍写 clone / label 旧键；默认身份一次性迁移只复制不删除。从 1.6.x / 1.7.0 / 1.12.0 覆盖安装：未真机验证
+- 泄露自查：诊断页与日志只含 Profile 名、异常类型与消息，不含 Cookie 值；无新增密钥
+- 下一棒建议：真机按 T-030 验收清单走一遍 → 通过后做第六节
+
 ## 2026-10-20 06:00 CST · 开发者（Hark） · T-028
 - 分支 / 提交：task/T-028-write-confirm（从 main @ 782ca10 切出；v1.12.0，versionCode 33）
 - 完成：

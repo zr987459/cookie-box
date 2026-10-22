@@ -3,11 +3,13 @@
     CookieBox · activity_main.xml（T-019 UI 重构）
     设计：浮动药丸地址栏 + 悬浮胶囊控制底栏 + Slate 深色质感（#0F172A）
     兼容：保留全部 ViewBinding id（MainActivity.kt 无需改动即可编译运行）
-      ivSecurity / etUrl / btnClearUrl / btnRefresh / btnMenu / progressBar
+      ivSecurity / etUrl / btnClearUrl / btnRefresh / progressBar
       layoutFindBar / etFind / tvFindCount / btnFindPrev / btnFindNext / btnFindClose
       layoutWebContainer / layoutShortcuts / chipGroupShortcuts
-      bottomAppBar / btnNavBack / btnNavForward / btnNavHome / btnNavTabs / tvTabBadge
-      btnNavStorage / btnNavExtract / layoutFullscreen
+      bottomAppBar / btnNavBack / btnNavForward / btnNavTabs / tvTabBadge
+      btnNavExtract / btnNavMore / layoutFullscreen
+    T-030：底栏 6 → 5 个按钮（主页移到新标签页与「更多」，储存库移到「更多」最上方与提取面板），
+      地址栏右侧菜单按钮并入底部「更多」；cardIdentityChooser / scrollIdentityBar 为账号底栏
     类型变化（均为原类型的子类或仅用到 View 通用 API）：
       progressBar  ProgressBar  → LinearProgressIndicator（继承 ProgressBar）
       layoutFindBar LinearLayout → MaterialCardView（仅用 visibility）
@@ -44,6 +46,7 @@
             app:cardCornerRadius="24dp"
             app:cardElevation="3dp"
             app:cardPreventCornerOverlap="false"
+            app:layout_scrollFlags="scroll|enterAlways|snap"
             app:strokeColor="@color/cb_hairline"
             app:strokeWidth="1dp"
             tools:targetApi="p">
@@ -120,17 +123,6 @@
                         android:src="@drawable/ic_refresh"
                         app:tint="@color/cb_icon" />
 
-                    <!-- 更多菜单收进药丸内：翻译 / 缩放 / 桌面版 / 查找 / 分享 / 清除 -->
-                    <ImageButton
-                        android:id="@+id/btnMenu"
-                        android:layout_width="38dp"
-                        android:layout_height="38dp"
-                        android:background="?attr/selectableItemBackgroundBorderless"
-                        android:contentDescription="更多"
-                        android:padding="10dp"
-                        android:scaleType="fitCenter"
-                        android:src="@drawable/ic_more_vert"
-                        app:tint="@color/cb_icon" />
                 </LinearLayout>
 
                 <!-- 加载进度：贴药丸底边的 2dp 细线，被圆角自然裁切 -->
@@ -533,18 +525,6 @@
                 android:src="@drawable/ic_arrow_forward"
                 app:tint="@color/cb_icon" />
 
-            <ImageButton
-                android:id="@+id/btnNavHome"
-                android:layout_width="0dp"
-                android:layout_height="44dp"
-                android:layout_weight="1"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="主页"
-                android:padding="11dp"
-                android:scaleType="fitCenter"
-                android:src="@drawable/ic_home"
-                app:tint="@color/cb_icon" />
-
             <!-- 多标签：图标 + 右上角数量角标 -->
             <FrameLayout
                 android:id="@+id/btnNavTabs"
@@ -586,18 +566,6 @@
                     tools:text="12" />
             </FrameLayout>
 
-            <ImageButton
-                android:id="@+id/btnNavStorage"
-                android:layout_width="0dp"
-                android:layout_height="44dp"
-                android:layout_weight="1"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="Cookie 储存库"
-                android:padding="11dp"
-                android:scaleType="fitCenter"
-                android:src="@drawable/ic_storage"
-                app:tint="@color/cb_icon" />
-
             <!-- Cookie 提取：品牌色胶囊，全栏唯一的实心元素 -->
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnNavExtract"
@@ -621,6 +589,20 @@
                 app:iconSize="18dp"
                 app:iconTint="@color/on_primary"
                 app:rippleColor="@color/cb_ripple_on_primary" />
+
+            <!-- T-030：更多（底部面板：储存库、账号密码、查找、翻译、桌面版、分享…） -->
+            <ImageButton
+                android:id="@+id/btnNavMore"
+                android:layout_width="0dp"
+                android:layout_height="44dp"
+                android:layout_marginStart="4dp"
+                android:layout_weight="1"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="更多"
+                android:padding="11dp"
+                android:scaleType="fitCenter"
+                android:src="@drawable/ic_menu"
+                app:tint="@color/cb_icon" />
         </LinearLayout>
     </com.google.android.material.card.MaterialCardView>
 

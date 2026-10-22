@@ -39,6 +39,8 @@ class CookieBottomSheetDialog : BottomSheetDialogFragment() {
     private var adapter: CookieAdapter? = null
 
     var customCookieManager: CookieManager? = null
+    /** T-030：提取面板里的储存库入口 */
+    var onOpenStorage: (() -> Unit)? = null
 
     private enum class Mode {
         LIST, HEADER, JSON, NETSCAPE, PYTHON, CURL
@@ -130,6 +132,11 @@ class CookieBottomSheetDialog : BottomSheetDialogFragment() {
             // 1. 顶部显眼一键复制
             b.btnTopQuickCopy.setOnClickListener {
                 copyCurrentFormat(host)
+            }
+
+            b.btnOpenStorage.setOnClickListener {
+                dismiss()
+                onOpenStorage?.invoke()
             }
 
             // 2. 导出为 TXT 本地文件 (免剪贴板限制)
