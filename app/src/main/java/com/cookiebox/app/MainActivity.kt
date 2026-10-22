@@ -732,6 +732,23 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /** 全部关闭：主账号以外的账号会删除登录状态，先确认 */
+    private fun requestCloseAllTabs() {
+        val others = tabs.filter { it.isClone && !it.identityPending }.map { it.profileName }.distinct()
+        val msg = if (others.isEmpty()) "关闭全部 ${tabs.size} 个标签？"
+        else "关闭全部 ${tabs.size} 个标签？主账号以外的 ${others.size} 个账号（" +
+                others.joinToString("、") { identities.name(it) }.take(60) +
+                "）的登录状态会被删除。需要保留的话，先在胶囊上长按「保存到储存库」。"
+        AlertDialog.Builder(this)
+            .setTitle("全部关闭")
+            .setMessage(msg)
+            .setPositiveButton("全部关闭") { _, _ ->
+                tabs.map { it.id }.forEach { closeTab(it) }
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
     private fun closeTab(tabId: String) {
         val targetIndex = tabs.indexOfFirst { it.id == tabId }
         if (targetIndex < 0) return
@@ -1521,6 +1538,7 @@ class MainActivity : AppCompatActivity() {
         dialog.onNewTabRequested = { _ -> createNewTab(initialUrl = "", lazy = true) }
         dialog.onDismissListener = { tabsDialog = null }
         dialog.identityOf = { t -> Pair(identities.name(t.profileName), identities.color(t.profileName)) }
+        dialog.onCloseAllRequested = { requestCloseAllTabs() }
         dialog.show(supportFragmentManager, "TabsBottomSheet")
         dialog.setTabsData(tabs, activeTabId)
     }
