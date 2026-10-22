@@ -117,6 +117,18 @@ class MainActivity : AppCompatActivity() {
     private val notificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
+    // 下载管理：Android 11+ 删除不属于本应用的文件需要系统确认，确认后再移除记录
+    private var pendingDeleteIds: List<Long> = emptyList()
+    private val deleteRequestLauncher =
+        registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
+            val ids = pendingDeleteIds
+            pendingDeleteIds = emptyList()
+            if (result.resultCode == RESULT_OK) {
+                downloader.store.remove(ids)
+                toast("已删除")
+            } else toast("没有删除")
+        }
+
     companion object {
         private const val DESKTOP_UA =
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
@@ -1189,9 +1201,12 @@ class MainActivity : AppCompatActivity() {
             com.cookiebox.app.ui.MoreSheet.Item(
                 "桌面版", R.drawable.ic_desktop, tab != null, checked = tab?.isDesktop == true
             ) { toggleActiveTabUserAgent() },
-            com.cookiebox.app.ui.MoreSheet.Item("分享", R.drawable.ic_share, hasPage) { tab?.let { shareText(pageUrl(), it.title) } }
+            com.cookiebox.app.ui.MoreSheet.Item("下载", R.drawable.ic_file_download, checked = downloader.store.runningCount() > 0) {
+                openDownloadsSheet()
+            }
         )
         val list = mutableListOf(
+            com.cookiebox.app.ui.MoreSheet.Item("分享", R.drawable.ic_share, hasPage) { tab?.let { shareText(pageUrl(), it.title) } },
             com.cookiebox.app.ui.MoreSheet.Item("主页", R.drawable.ic_home, hasPage) { goHome() },
             com.cookiebox.app.ui.MoreSheet.Item("加到首页快捷入口", R.drawable.ic_add, hasPage) {
                 tab?.let {
@@ -1330,7 +1345,9 @@ class MainActivity : AppCompatActivity() {
                 val referer = tab.webView?.url
                 withStoragePermission {
                     askNotificationPermissionOnce()
-                    toast("开始下载…")
+                    Snackbar.make(binding.root, "开始下载，可在「更多 → 下载」查看", Snackbar.LENGTH_SHORT)
+                        .setAction("查看") { openDownloadsSheet() }
+                        .show()
                     downloader.download(url, ua, referer, cm, contentDisposition, mimeType) { result, error ->
                         onDownloadFinished(result, error)
                     }
@@ -1380,6 +1397,105 @@ class MainActivity : AppCompatActivity() {
         Snackbar.make(binding.root, "已保存到「下载」：${result.fileName}", Snackbar.LENGTH_LONG)
             .setAction("打开") { openDownloaded(result) }
             .show()
+    }
+
+    // ---------- 下载管理 ----------
+
+    private fun openDownloadsSheet() {
+        val store = downloader.store
+        com.cookiebox.app.ui.DownloadsSheet(this, store, object : com.cookiebox.app.ui.DownloadsSheet.Actions {
+            override fun open(rec: com.cookiebox.app.engine.DownloadStore.Rec) {
+                val uri = rec.uri ?: return toast("文件已不在")
+                openDownloaded(FileDownloader.Result(Uri.parse(uri), rec.fileName, rec.mime, rec.id))
+            }
+
+            override fun share(rec: com.cookiebox.app.engine.DownloadStore.Rec) {
+                val uri = rec.uri ?: return toast("文件已不在")
+                try {
+                    val send = Intent(Intent.ACTION_SEND)
+                        .setType(rec.mime)
+                        .putExtra(Intent.EXTRA_STREAM, Uri.parse(uri))
+                        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    startActivity(Intent.createChooser(send, rec.fileName))
+                } catch (e: Exception) {
+                    toast("无法分享该文件")
+                }
+            }
+
+            override fun copyUrl(rec: com.cookiebox.app.engine.DownloadStore.Rec) {
+                rec.url?.let { copyText(it, "已复制下载链接") }
+            }
+
+            override fun retry(rec: com.cookiebox.app.engine.DownloadStore.Rec) {
+                val url = rec.url ?: return
+                // 用来源网站对应标签的身份（Cookie）重新下载；找不到时用当前标签
+                val host = rec.referer?.let { runCatching { Uri.parse(it).host }.getOrNull() }
+                val tab = tabs.firstOrNull { t -> host != null && runCatching { Uri.parse(t.url).host }.getOrNull() == host }
+                    ?: getActiveTab()
+                val cm = tab?.customCookieManager ?: CookieManager.getInstance()
+                cm.flush()
+                val ua = tab?.webView?.settings?.userAgentString ?: defaultMobileUa
+                withStoragePermission {
+                    store.remove(listOf(rec.id))
+                    downloader.download(url, ua, rec.referer, cm, null, rec.mime) { result, error ->
+                        onDownloadFinished(result, error)
+                    }
+                }
+            }
+
+            override fun cancel(rec: com.cookiebox.app.engine.DownloadStore.Rec) {
+                downloader.cancel(rec.id)
+            }
+
+            override fun delete(recs: List<com.cookiebox.app.engine.DownloadStore.Rec>) {
+                Thread {
+                    val removed = ArrayList<Long>()
+                    val needConfirm = ArrayList<Pair<Long, android.content.IntentSender>>()
+                    var failed = 0
+                    recs.forEach { r ->
+                        try {
+                            val sender = downloader.deleteFile(r)
+                            if (sender == null) removed += r.id else needConfirm += r.id to sender
+                        } catch (e: Exception) {
+                            failed++
+                        }
+                    }
+                    store.remove(removed)
+                    runOnUiThread {
+                        when {
+                            needConfirm.isNotEmpty() -> {
+                                // 系统一次只确认一个请求：多个文件时逐个确认第一个，其余提示用户再点一次
+                                pendingDeleteIds = listOf(needConfirm[0].first)
+                                deleteRequestLauncher.launch(
+                                    androidx.activity.result.IntentSenderRequest.Builder(needConfirm[0].second).build()
+                                )
+                                if (needConfirm.size > 1) toast("还有 ${needConfirm.size - 1} 个文件需要逐个确认删除")
+                            }
+                            failed > 0 -> toast("有 $failed 个文件删不掉，请在「下载」文件夹里手动删除")
+                            removed.isNotEmpty() -> toast(if (removed.size == 1) "已删除" else "已删除 ${removed.size} 个文件")
+                        }
+                    }
+                }.start()
+            }
+
+            override fun openFolder() {
+                val tries = listOf(
+                    Intent(android.app.DownloadManager.ACTION_VIEW_DOWNLOADS),
+                    Intent(Intent.ACTION_VIEW).setDataAndType(
+                        Uri.parse("content://com.android.externalstorage.documents/document/primary%3ADownload"),
+                        "vnd.android.document/directory"
+                    )
+                )
+                for (i in tries) {
+                    try {
+                        startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                        return
+                    } catch (_: Exception) {
+                    }
+                }
+                toast("没有找到文件管理器，请在系统「文件」应用里打开 Download 文件夹")
+            }
+        }).show()
     }
 
     private fun openDownloaded(result: FileDownloader.Result) {
