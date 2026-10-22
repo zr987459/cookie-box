@@ -233,6 +233,7 @@
 
     <!-- ========== 中部：浏览视窗（底部让出悬浮底栏区域，不遮挡网页内容） ========== -->
     <FrameLayout
+        android:id="@+id/layoutContentArea"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:layout_marginBottom="@dimen/cb_dock_clearance"
@@ -382,6 +383,28 @@
             </LinearLayout>
         </ScrollView>
     </FrameLayout>
+
+    <!-- ========== T-030：同一网站多个账号时的快速切换胶囊栏（只有 1 个账号时隐藏） ========== -->
+    <HorizontalScrollView
+        android:id="@+id/scrollIdentityBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:layout_marginBottom="@dimen/cb_overlay_above_dock"
+        android:clipToPadding="false"
+        android:elevation="8dp"
+        android:paddingStart="14dp"
+        android:paddingEnd="14dp"
+        android:scrollbars="none"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:id="@+id/layoutIdentityBar"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal" />
+    </HorizontalScrollView>
 
     <!-- ========== T-030：选账号小底栏（同一网站已有标签时，新标签先问用哪个账号） ========== -->
     <com.google.android.material.card.MaterialCardView

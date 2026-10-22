@@ -171,6 +171,7 @@ class MainActivity : AppCompatActivity() {
         restoreSessionOrCreateTab()
 
         setupListeners()
+        setupAddressBarSwipe()
         renderShortcuts()
         setupBackNavigation()
         handleIncomingIntent(intent)
@@ -502,6 +503,7 @@ class MainActivity : AppCompatActivity() {
                         }
                         updateSecurityIcon(it)
                         binding.layoutShortcuts.visibility = View.GONE
+                        updateIdentityBar()
                     }
                 }
             }
@@ -540,6 +542,7 @@ class MainActivity : AppCompatActivity() {
                     if (url != null && url != "about:blank" && !binding.etUrl.isFocused) binding.etUrl.setText(url)
                     if (url != null && url != "about:blank") binding.layoutShortcuts.visibility = View.GONE
                     updateNavButtons()
+                    updateIdentityBar()
                 }
             }
         }
@@ -710,6 +713,7 @@ class MainActivity : AppCompatActivity() {
 
         updateTabBadge()
         updateNavButtons()
+        updateIdentityBar()
     }
 
     /** 关闭标签（分身标签会删除其登录状态，先确认） */
@@ -767,6 +771,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         refreshTabsDialog()
+        updateIdentityBar()
     }
 
     /** 重命名身份（账号）：同一身份的所有标签一起改名 */
@@ -1845,6 +1850,7 @@ class MainActivity : AppCompatActivity() {
 
         binding.tvChooserTitle.text = "用哪个账号打开 $site？"
         binding.cardIdentityChooser.visibility = View.VISIBLE
+        updateIdentityBar()
         binding.btnChooserClose.setOnClickListener { hideIdentityChooser() }
         // 用户开始滑动/触摸选项，就不再自动选择
         binding.scrollChooserChips.setOnTouchListener { _, _ -> cancelChooserCountdown(); false }
@@ -1875,12 +1881,135 @@ class MainActivity : AppCompatActivity() {
     private fun hideIdentityChooser() {
         chooserCountdown?.let { mainHandler.removeCallbacks(it) }
         chooserCountdown = null
-        if (::binding.isInitialized) binding.cardIdentityChooser.visibility = View.GONE
+        if (::binding.isInitialized && binding.cardIdentityChooser.visibility != View.GONE) {
+            binding.cardIdentityChooser.visibility = View.GONE
+            updateIdentityBar()
+        }
     }
 
     /** 身份名称/颜色或标签归属变化后刷新相关界面（标签面板、底部账号胶囊栏） */
     private fun onIdentitiesChanged() {
         refreshTabsDialog()
+        updateIdentityBar()
+    }
+
+    // ---------- T-030：底部「同一网站不同账号」胶囊栏 ----------
+
+    /** 当前网站每个账号对应的标签（同一账号有多个标签时取最近用过的） */
+    private fun identitiesOnCurrentSite(): List<TabItem> {
+        val active = getActiveTab() ?: return emptyList()
+        val site = siteOf(active)
+        if (site.isBlank() || active.identityPending) return emptyList()
+        return tabs.filter { !it.identityPending && siteOf(it) == site }
+            .groupBy { it.profileName }
+            .map { (profile, list) -> list.firstOrNull { it.id == activeTabId && it.profileName == profile } ?: list.maxBy { it.lastActiveAt } }
+            .sortedBy { it.profileName != DEFAULT_PROFILE } // 主账号排第一，其余按出现顺序
+    }
+
+    private fun updateIdentityBar() {
+        if (!::binding.isInitialized) return
+        val reps = identitiesOnCurrentSite()
+        val bar = binding.layoutIdentityBar
+        val show = reps.size >= 2 && binding.cardIdentityChooser.visibility != View.VISIBLE
+        binding.scrollIdentityBar.visibility = if (show) View.VISIBLE else View.GONE
+        // 胶囊栏显示时，网页底部再让出一条，避免遮住页面内容
+        val lp = binding.layoutContentArea.layoutParams as ViewGroup.MarginLayoutParams
+        val base = resources.getDimensionPixelSize(R.dimen.cb_dock_clearance)
+        val extra = if (show) (52 * resources.displayMetrics.density).toInt() else 0
+        if (lp.bottomMargin != base + extra) {
+            lp.bottomMargin = base + extra
+            binding.layoutContentArea.layoutParams = lp
+        }
+        if (!show) {
+            bar.removeAllViews()
+            return
+        }
+        bar.removeAllViews()
+        val active = getActiveTab()
+        val gap = (8 * resources.displayMetrics.density).toInt()
+        fun lp() = android.widget.LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply { marginEnd = gap }
+        reps.forEach { t ->
+            val isCurrent = t.profileName == active?.profileName
+            val chip = Chip(this).apply {
+                text = identities.name(t.profileName) + if (t.isClone && !t.isolated) " · 未隔离" else ""
+                chipIcon = identityDot(identities.color(t.profileName), 12)
+                isChipIconVisible = true
+                isCheckable = true
+                isChecked = isCurrent
+                isCheckedIconVisible = false
+                elevation = 4 * resources.displayMetrics.density
+                contentDescription = "切换到账号 ${identities.name(t.profileName)}"
+                setOnClickListener {
+                    isChecked = isCurrent
+                    if (!isCurrent) switchTab(t.id)
+                }
+                setOnLongClickListener { showIdentityCapsuleMenu(t); true }
+                layoutParams = lp()
+            }
+            bar.addView(chip)
+        }
+        val plus = Chip(this).apply {
+            text = "新账号"
+            setChipIconResource(R.drawable.ic_add)
+            isChipIconVisible = true
+            elevation = 4 * resources.displayMetrics.density
+            contentDescription = "用新账号打开当前网站"
+            setOnClickListener { openCurrentSiteWithNewIdentity() }
+            layoutParams = lp()
+        }
+        bar.addView(plus)
+    }
+
+    /** 「＋」：用一个新身份打开当前网站的首页 */
+    private fun openCurrentSiteWithNewIdentity() {
+        val active = getActiveTab() ?: return
+        val url = active.webView?.url?.takeIf { it != "about:blank" } ?: active.url
+        val host = try { Uri.parse(url).host } catch (e: Exception) { null } ?: return
+        if (!ensureCanIsolate()) return
+        val entry = DomainUtils.getCleanEntryUrl(url, host)
+        createNewTab(initialUrl = entry, isClone = true, desktop = active.isDesktop)
+        onIdentitiesChanged()
+    }
+
+    /** 长按胶囊：重命名 / 保存到储存库 / 关闭 */
+    private fun showIdentityCapsuleMenu(t: TabItem) {
+        val name = identities.name(t.profileName)
+        AlertDialog.Builder(this)
+            .setTitle("账号「$name」")
+            .setItems(arrayOf("重命名", "保存到储存库", "关闭")) { _, which ->
+                when (which) {
+                    0 -> showRenameTabDialog(t.id)
+                    1 -> {
+                        if (t.id != activeTabId) switchTab(t.id)
+                        openCookieSheet()
+                    }
+                    2 -> requestCloseTab(t.id)
+                }
+            }
+            .show()
+    }
+
+    /** 地址栏左右滑动切到上一个 / 下一个标签（编辑网址时不生效） */
+    private fun setupAddressBarSwipe() {
+        val detector = android.view.GestureDetector(this, object : android.view.GestureDetector.SimpleOnGestureListener() {
+            override fun onFling(e1: android.view.MotionEvent?, e2: android.view.MotionEvent, vx: Float, vy: Float): Boolean {
+                if (e1 == null || binding.etUrl.isFocused) return false
+                val dx = e2.x - e1.x
+                val dy = e2.y - e1.y
+                val minDist = 60 * resources.displayMetrics.density
+                if (kotlin.math.abs(dx) < minDist || kotlin.math.abs(dx) < kotlin.math.abs(dy) * 1.5f || kotlin.math.abs(vx) < 400) return false
+                val i = tabs.indexOfFirst { it.id == activeTabId }
+                if (i < 0 || tabs.size < 2) return false
+                val next = if (dx < 0) (i + 1) % tabs.size else (i - 1 + tabs.size) % tabs.size
+                switchTab(tabs[next].id)
+                val t = tabs[next]
+                toast("${identities.name(t.profileName)} · ${t.title.ifBlank { "新标签页" }.take(20)}")
+                return true
+            }
+        })
+        binding.etUrl.setOnTouchListener { _, ev -> detector.onTouchEvent(ev) && !binding.etUrl.isFocused }
     }
 
     // ---------- 首页快捷入口 ----------
