@@ -14,5 +14,7 @@ data class TabItem(
     var webView: WebView? = null,
     var openerId: String? = null, // 由哪个标签的链接/弹窗打开（返回到底时回到它）
     var pendingUrl: String? = null, // 恢复会话时延迟加载：切到该标签才真正载入
-    var customName: String = "" // 用户自定义标签名（区分多账号；为空则显示网页标题）
+    var customName: String = "", // 用户自定义标签名（区分多账号；为空则显示网页标题）
+    var isolated: Boolean = true, // T-030：该标签的身份是否真正落在独立 Profile（false = 退回了全局 CookieManager）
+    var isolationError: String? = null // 未隔离的原因，供诊断页显示
 )

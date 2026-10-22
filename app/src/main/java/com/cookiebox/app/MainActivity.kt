@@ -51,6 +51,7 @@ import com.cookiebox.app.engine.AccountVault
 import com.cookiebox.app.engine.BrowserPrefs
 import com.cookiebox.app.engine.DomainUtils
 import com.cookiebox.app.engine.FileDownloader
+import com.cookiebox.app.engine.ProfileIsolation
 import com.cookiebox.app.engine.WebTranslator
 import com.cookiebox.app.model.SavedCookieRecord
 import com.cookiebox.app.model.TabItem
@@ -243,6 +244,46 @@ class MainActivity : AppCompatActivity() {
             }
         }
         switchTab(created[activeIndex.coerceIn(0, created.size - 1)].id)
+        migrateDefaultIdentityOnce(created)
+    }
+
+    /**
+     * T-030 兼容迁移（只做一次，只针对默认身份）：
+     * 旧版若 setProfile 实际失败，默认标签的登录状态在全局 CookieManager 里；修好调用顺序后默认标签改用
+     * 「Profile_Default」，会看起来像被登出。这里对每个已保存的默认标签网址：若 Profile_Default 里没有任何
+     * Cookie、而全局里有，就把全局的 Cookie 复制过去（只复制不删除，旧数据保持原样）。
+     * Profile_Default 里已有 Cookie（说明旧版隔离本来就生效）时什么也不做。
+     */
+    private fun migrateDefaultIdentityOnce(created: List<TabItem>) {
+        if (prefs.defaultIdentityMigrated) return
+        val defaults = created.filter { it.profileName == DEFAULT_PROFILE && it.isolated }
+        val target = defaults.firstOrNull()?.customCookieManager
+        if (target == null) {
+            // 没有隔离成功的默认标签：默认身份本来就用全局 CookieManager，无需迁移
+            prefs.defaultIdentityMigrated = true
+            return
+        }
+        val global = CookieManager.getInstance()
+        if (target === global) { prefs.defaultIdentityMigrated = true; return }
+        val urls = defaults.mapNotNull { (it.pendingUrl ?: it.url).takeIf { u -> u.startsWith("http") } }
+            .distinctBy { DomainUtils.getRootDomain(android.net.Uri.parse(it).host ?: "") }
+        var copiedSites = 0
+        for (url in urls) {
+            if (!target.getCookie(url).isNullOrBlank()) continue
+            val src = parseCookieHeader(global.getCookie(url))
+            if (src.isEmpty()) continue
+            val host = android.net.Uri.parse(url).host ?: continue
+            val root = DomainUtils.getRootDomain(host).ifBlank { host }
+            val secure = if (url.startsWith("https://")) "; Secure" else ""
+            src.forEach { (k, v) ->
+                // getCookie 拿不到原始过期时间，统一给一年，避免变成会话 Cookie 重启即丢
+                target.setCookie("https://$root", "$k=$v; Domain=.$root; Path=/; Max-Age=31536000$secure")
+            }
+            copiedSites++
+        }
+        target.flush()
+        prefs.defaultIdentityMigrated = true
+        if (copiedSites > 0) android.util.Log.i("CookieBox/Profile", "默认身份迁移：复制了 $copiedSites 个站点的登录状态")
     }
 
     // ==================== 多窗口与多账号网页分身 ====================
@@ -257,12 +298,20 @@ class MainActivity : AppCompatActivity() {
         desktop: Boolean = false
     ): TabItem {
         val tabId = UUID.randomUUID().toString()
-        val webView = WebView(this).apply {
-            layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
+        val resolvedProfile = profileName ?: if (isClone) {
+            "Profile_Clone_${UUID.randomUUID().toString().take(8)}"
+        } else {
+            DEFAULT_PROFILE
         }
+
+        // ⚠️ 调用顺序不能变（T-030）：new WebView 之后第一件事就是绑定身份，
+        // 之后才能访问 settings、设置 client、写 Cookie 策略。详见 ProfileIsolation 类注释。
+        val webView = WebView(this)
+        val isolation = ProfileIsolation.attach(webView, resolvedProfile)
+        webView.layoutParams = ViewGroup.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT
+        )
 
         val settings = webView.settings
         if (defaultMobileUa.isEmpty()) {
@@ -289,12 +338,6 @@ class MainActivity : AppCompatActivity() {
         settings.setSupportMultipleWindows(true)
         settings.javaScriptCanOpenWindowsAutomatically = true
 
-        val resolvedProfile = profileName ?: if (isClone) {
-            "Profile_Clone_${UUID.randomUUID().toString().take(8)}"
-        } else {
-            DEFAULT_PROFILE
-        }
-
         val newTab = TabItem(
             id = tabId,
             title = if (isClone) "网页分身" else "新标签页",
@@ -303,15 +346,20 @@ class MainActivity : AppCompatActivity() {
             isClone = isClone,
             profileName = resolvedProfile,
             webView = webView,
-            openerId = openerId
+            openerId = openerId,
+            isolated = isolation.isolated,
+            isolationError = isolation.error
         )
         // 分身标签里打开的新窗口属于同一个账号，沿用打开者的自定义名
         tabs.firstOrNull { it.id == openerId }?.let { opener ->
             if (opener.isClone && opener.profileName == resolvedProfile) newTab.customName = opener.customName
         }
 
-        // 核心：基于 AndroidX WebKit 架构实现真正的引擎级分身隔离 (各 Profile 持有完全独立的 Cookie 与 Storage)
-        setupProfileForTab(newTab, webView)
+        // 身份已在 new WebView 之后立刻绑定；这里只设置该身份 CookieManager 的接收策略
+        newTab.customCookieManager = isolation.cookieManager
+        isolation.cookieManager.setAcceptCookie(true)
+        isolation.cookieManager.setAcceptThirdPartyCookies(webView, true)
+        if (isClone && !isolation.isolated) warnIsolationUnavailable()
 
         webView.webChromeClient = object : WebChromeClient() {
             override fun onReceivedTitle(view: WebView?, title: String?) {
@@ -558,28 +606,53 @@ class MainActivity : AppCompatActivity() {
         wv.evaluateJavascript(UNLOCK_ZOOM_JS, null)
     }
 
-    private fun setupProfileForTab(tab: TabItem, webView: WebView) {
-        val globalCm = CookieManager.getInstance()
-        globalCm.setAcceptCookie(true)
-        globalCm.setAcceptThirdPartyCookies(webView, true)
-
-        if (WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) {
-            try {
-                val profileStore = ProfileStore.getInstance()
-                val profile = profileStore.getOrCreateProfile(tab.profileName)
-                WebViewCompat.setProfile(webView, tab.profileName)
-                tab.customCookieManager = profile.cookieManager
-            } catch (e: Exception) {
-                e.printStackTrace()
-                tab.customCookieManager = globalCm
-            }
-        } else {
-            tab.customCookieManager = globalCm
+    /** 分身无法隔离时提示一次（每次启动最多一次），不再静默共用 Cookie */
+    private var isolationWarned = false
+    private fun warnIsolationUnavailable() {
+        if (isolationWarned) return
+        isolationWarned = true
+        binding.root.post {
+            AlertDialog.Builder(this)
+                .setTitle("分身无法隔离")
+                .setMessage(ProfileIsolation.UNSUPPORTED_TIP + "\n\n当前：" + ProfileIsolation.webViewVersion(this) +
+                        "\n\n在此之前，标有「未隔离」的分身标签与默认身份共用同一份登录状态。")
+                .setPositiveButton("知道了", null)
+                .setNeutralButton("查看诊断") { _, _ -> showIsolationDiagnostics() }
+                .show()
         }
+    }
 
-        val cm = tab.customCookieManager ?: globalCm
-        cm.setAcceptCookie(true)
-        cm.setAcceptThirdPartyCookies(webView, true)
+    /** 新身份入口统一检查：不能隔离就提示，不创建会串号的「分身」 */
+    private fun ensureCanIsolate(): Boolean {
+        if (ProfileIsolation.canIsolate()) return true
+        AlertDialog.Builder(this)
+            .setTitle("无法新建分身")
+            .setMessage(ProfileIsolation.UNSUPPORTED_TIP + "\n\n当前：" + ProfileIsolation.webViewVersion(this))
+            .setPositiveButton("知道了", null)
+            .setNeutralButton("查看诊断") { _, _ -> showIsolationDiagnostics() }
+            .show()
+        return false
+    }
+
+    /** 分身诊断：WebView 版本、是否支持多 Profile、每个标签的身份与隔离状态（不含任何 Cookie 值） */
+    private fun showIsolationDiagnostics() {
+        val sb = StringBuilder()
+        sb.append("系统 WebView：").append(ProfileIsolation.webViewVersion(this)).append('\n')
+        sb.append("MULTI_PROFILE：").append(if (ProfileIsolation.isSupported()) "支持" else "不支持").append('\n')
+        sb.append("本次启动 setProfile 失败过：").append(if (ProfileIsolation.attachFailed) "是" else "否").append("\n\n")
+        tabs.forEachIndexed { i, t ->
+            val name = t.customName.ifBlank { t.title.ifBlank { "新标签页" } }.take(18)
+            sb.append(i + 1).append(". ").append(name).append('\n')
+            sb.append("   身份：").append(t.profileName).append(if (t.isClone) "（分身）" else "（默认）").append('\n')
+            sb.append("   隔离：").append(if (t.isolated) "✓ 独立" else "✗ 未隔离").append('\n')
+            t.isolationError?.let { sb.append("   原因：").append(it.take(160)).append('\n') }
+        }
+        AlertDialog.Builder(this)
+            .setTitle("分身诊断")
+            .setMessage(sb.toString())
+            .setPositiveButton("关闭", null)
+            .setNeutralButton("复制") { _, _ -> copyText(sb.toString(), "已复制诊断信息", isSensitive = false) }
+            .show()
     }
 
     private fun switchTab(targetTabId: String) {
@@ -788,14 +861,75 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        // 选择当前活动的空白标签或新建标签
+        // T-030：绝不覆盖已有身份。按顺序决定写到哪个身份：
+        // 1) 已有某个身份恰好就是这个账号（Cookie 全部一致）→ 直接用它；
+        // 2) 默认身份没登录这个站，或登录的就是同一账号 → 用默认身份（与旧版行为一致）；
+        // 3) 默认身份登录了这个站的另一个账号 → 新建一个身份标签再写入；不能隔离时先问用户。
+        val recordMap = cookies.associate { it.name to it.value }
+        fun cookiesOf(cm: CookieManager?): Map<String, String> = parseCookieHeader(cm?.getCookie(cleanEntryUrl))
+
+        val sameAccountProfile = tabs.map { it.profileName }.distinct().firstOrNull { p ->
+            val have = cookiesOf(tabs.first { it.profileName == p }.customCookieManager)
+            recordMap.all { (k, v) -> have[k] == v }
+        }
+        val defaultCm = tabs.firstOrNull { it.profileName == DEFAULT_PROFILE }?.customCookieManager
+            ?: ProfileIsolation.cookieManagerFor(DEFAULT_PROFILE)
+        val defaultHave = cookiesOf(defaultCm)
+        val conflictsWithDefault = recordMap.any { (k, v) -> defaultHave[k] != null && defaultHave[k] != v }
+
+        val targetProfile: String? = when {
+            sameAccountProfile != null -> sameAccountProfile
+            !conflictsWithDefault -> DEFAULT_PROFILE
+            else -> null // 需要新身份
+        }
+        if (targetProfile == null && !ProfileIsolation.canIsolate()) {
+            AlertDialog.Builder(this)
+                .setTitle("默认身份已登录另一个账号")
+                .setMessage("${record.domain} 在默认身份里已经登录了别的账号。" + ProfileIsolation.UNSUPPORTED_TIP +
+                        "\n\n继续写入会覆盖默认身份里的登录状态（大号会被登出）。")
+                .setPositiveButton("仍然覆盖") { _, _ -> writeRecordCookies(record, DEFAULT_PROFILE, forceTab = null) }
+                .setNegativeButton("取消", null)
+                .show()
+            return
+        }
+        writeRecordCookies(record, targetProfile, forceTab = null)
+    }
+
+    /** 解析 CookieManager.getCookie 返回的 "a=1; b=2" 为 name→value（只在内存比较，不落盘、不打日志） */
+    private fun parseCookieHeader(raw: String?): Map<String, String> {
+        if (raw.isNullOrBlank()) return emptyMap()
+        return raw.split(';').mapNotNull {
+            val i = it.indexOf('=')
+            if (i <= 0) null else it.substring(0, i).trim() to it.substring(i + 1).trim()
+        }.toMap()
+    }
+
+    /** 把储存库记录写入指定身份（null = 新建一个身份）并打开入口页 */
+    private fun writeRecordCookies(record: SavedCookieRecord, profileName: String?, forceTab: TabItem?) {
+        val cleanEntryUrl = DomainUtils.getCleanEntryUrl(record.url, record.domain)
+        val rootDomain = DomainUtils.getRootDomain(record.domain)
+        val cookies = record.getCookieList()
         val activeTab = getActiveTab()
-        val targetTab = if (activeTab != null && !activeTab.isClone && (activeTab.url.isBlank() || activeTab.url == "about:blank")) {
-            activeTab
-        } else {
-            createNewTab(initialUrl = "", isClone = false)
+        val targetTab = when {
+            forceTab != null -> forceTab
+            profileName == null -> createNewTab(initialUrl = "", isClone = true).also {
+                it.customName = record.title.take(MAX_TAB_NAME_LENGTH)
+            }
+            activeTab != null && activeTab.profileName == profileName &&
+                    (activeTab.url.isBlank() || activeTab.url == "about:blank") -> activeTab
+            else -> createNewTab(
+                initialUrl = "",
+                isClone = profileName != DEFAULT_PROFILE,
+                profileName = profileName
+            )
         }
 
+        // 新身份没能隔离（setProfile 失败）：写进去就等于覆盖默认身份，宁可不写
+        if (targetTab.profileName != DEFAULT_PROFILE && !targetTab.isolated && forceTab == null && profileName == null) {
+            closeTab(targetTab.id)
+            warnIsolationUnavailable()
+            return
+        }
         val cookieManager = targetTab.customCookieManager ?: CookieManager.getInstance()
         cookieManager.setAcceptCookie(true)
         targetTab.webView?.let { cookieManager.setAcceptThirdPartyCookies(it, true) }
@@ -832,7 +966,8 @@ class MainActivity : AppCompatActivity() {
             cookieManager.flush()
             binding.root.post {
                 loadUrlInTab(targetTab, cleanEntryUrl)
-                toast("已写入 ${cookies.size} 项 Cookie，正在免密直达 ${record.domain}")
+                val who = if (targetTab.profileName == DEFAULT_PROFILE) "默认身份" else "身份「${targetTab.customName.ifBlank { "新账号" }}」"
+                toast("已写入$who ${cookies.size} 项 Cookie，正在免密直达 ${record.domain}")
             }
         }
 
@@ -994,12 +1129,13 @@ class MainActivity : AppCompatActivity() {
         m.add(0, 13, 1, "账号管理（账号密码）")
         if (hasPage) m.add(0, 14, 2, "保存本页填写的账号密码")
         m.add(0, 15, 12, "AI 访问（MCP）")
+        m.add(0, 16, 13, "分身诊断")
 
         popup.setOnMenuItemClickListener { item ->
             val wv = tab?.webView
             when (item.itemId) {
                 1 -> createNewTab(initialUrl = "", isClone = false)
-                2 -> createNewTab(initialUrl = "", isClone = true)
+                2 -> if (ensureCanIsolate()) createNewTab(initialUrl = "", isClone = true)
                 3 -> openFindBar()
                 4 -> wv?.let {
                     toast("正在翻译为中文...")
@@ -1024,6 +1160,7 @@ class MainActivity : AppCompatActivity() {
                 13 -> openAccountsDialog()
                 14 -> tab?.let { saveCurrentPageLogin(it) }
                 15 -> startActivity(Intent(this, com.cookiebox.app.mcp.McpSettingsActivity::class.java))
+                16 -> showIsolationDiagnostics()
             }
             true
         }
@@ -1106,7 +1243,7 @@ class MainActivity : AppCompatActivity() {
                 toast("已在后台打开")
             }
             labels += "在新分身中打开（另一个账号）"
-            actions += { createNewTab(link, isClone = true) }
+            actions += { if (ensureCanIsolate()) createNewTab(link, isClone = true) }
             labels += "复制链接"
             actions += { copyText(link, "已复制链接") }
             labels += "分享链接"
@@ -1334,7 +1471,9 @@ class MainActivity : AppCompatActivity() {
         dialog.onTabSelected = { tabId -> switchTab(tabId) }
         dialog.onTabClosed = { tabId -> requestCloseTab(tabId) }
         dialog.onTabRenameRequested = { tabId -> showRenameTabDialog(tabId) }
-        dialog.onNewTabRequested = { isClone -> createNewTab(initialUrl = "", isClone = isClone) }
+        dialog.onNewTabRequested = { isClone ->
+            if (!isClone || ensureCanIsolate()) createNewTab(initialUrl = "", isClone = isClone)
+        }
         dialog.onDismissListener = { tabsDialog = null }
         dialog.show(supportFragmentManager, "TabsBottomSheet")
         dialog.setTabsData(tabs, activeTabId)

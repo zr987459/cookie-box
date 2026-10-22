@@ -122,6 +122,8 @@ class TabsAdapter(
                 val isActive = tab.id == currentActiveId
                 rowBinding.tvActiveBadge.visibility = if (isActive) View.VISIBLE else View.GONE
                 rowBinding.tvIsolatedBadge.visibility = if (tab.isClone) View.VISIBLE else View.GONE
+                // T-030：分身没能真正隔离时明确标出来，不再假装是独立账号
+                rowBinding.tvIsolatedBadge.text = if (tab.isClone && !tab.isolated) "未隔离" else "多开分身"
 
                 val pageTitle = if (tab.title.isNotBlank()) tab.title else "新标签页"
                 val pageUrl = if (tab.url.isNotBlank()) tab.url else "about:blank"
