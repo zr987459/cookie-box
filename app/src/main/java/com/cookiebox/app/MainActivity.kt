@@ -171,6 +171,7 @@ class MainActivity : AppCompatActivity() {
 
         setupListeners()
         setupAddressBarSwipe()
+        watchBottomOverlays()
         renderShortcuts()
         setupBackNavigation()
         handleIncomingIntent(intent)
@@ -1939,6 +1940,7 @@ class MainActivity : AppCompatActivity() {
                 isChecked = isCurrent
                 isCheckedIconVisible = false
                 elevation = 4 * resources.displayMetrics.density
+                compactChip(this)
                 contentDescription = "切换到账号 ${identities.name(t.profileName)}"
                 setOnClickListener {
                     isChecked = isCurrent
@@ -1954,6 +1956,7 @@ class MainActivity : AppCompatActivity() {
             setChipIconResource(R.drawable.ic_add)
             isChipIconVisible = true
             elevation = 4 * resources.displayMetrics.density
+            compactChip(this)
             contentDescription = "用新账号打开当前网站"
             setOnClickListener { openCurrentSiteWithNewIdentity() }
             layoutParams = lp()
@@ -1966,17 +1969,39 @@ class MainActivity : AppCompatActivity() {
     private var barsHidden = false
     private var scrollAccum = 0
 
-    /** 网页底部让出的空间：底栏收起时为 0；胶囊栏显示时再让出 52dp，避免遮住页面内容 */
+    /**
+     * 网页底部让出的空间 = 根布局底边到「底栏 / 账号胶囊栏」顶边的实际距离 + 4dp。
+     * 按实际位置计算而不是写死常量，底栏或胶囊栏换了尺寸也不会挡住网页（T-030 用户反馈）。
+     * 底栏收起时为 0。
+     */
     private fun applyContentBottomMargin() {
         val lp = binding.layoutContentArea.layoutParams as ViewGroup.MarginLayoutParams
-        val want = if (barsHidden) 0 else {
-            resources.getDimensionPixelSize(R.dimen.cb_dock_clearance) +
-                    if (binding.scrollIdentityBar.visibility == View.VISIBLE) (52 * resources.displayMetrics.density).toInt() else 0
+        val gap = (4 * resources.displayMetrics.density).toInt()
+        val want = when {
+            barsHidden -> 0
+            binding.root.height == 0 || binding.bottomAppBar.height == 0 ->
+                resources.getDimensionPixelSize(R.dimen.cb_dock_clearance)
+            else -> {
+                var top = binding.bottomAppBar.top
+                val bar = binding.scrollIdentityBar
+                if (bar.visibility == View.VISIBLE && bar.height > 0) top = minOf(top, bar.top)
+                (binding.root.height - top + gap).coerceAtLeast(0)
+            }
         }
         if (lp.bottomMargin != want) {
             lp.bottomMargin = want
             binding.layoutContentArea.layoutParams = lp
         }
+    }
+
+    /** 底栏 / 胶囊栏布局变化（显示、换行、尺寸变化）后重新计算网页底部留白 */
+    private fun watchBottomOverlays() {
+        val l = View.OnLayoutChangeListener { _, _, top, _, bottom, _, oldTop, _, oldBottom ->
+            if (top != oldTop || bottom != oldBottom) binding.root.post { applyContentBottomMargin() }
+        }
+        binding.bottomAppBar.addOnLayoutChangeListener(l)
+        binding.scrollIdentityBar.addOnLayoutChangeListener(l)
+        binding.root.addOnLayoutChangeListener(l)
     }
 
     private fun onWebScrolled(tab: TabItem, scrollY: Int, dy: Int) {
@@ -2008,6 +2033,14 @@ class MainActivity : AppCompatActivity() {
         binding.bottomAppBar.animate().translationY(0f).setDuration(180).start()
         binding.scrollIdentityBar.animate().translationY(0f).setDuration(180).start()
         applyContentBottomMargin()
+    }
+
+    /** 账号胶囊做矮一点（视觉 32dp），可点区域仍保证 44dp */
+    private fun compactChip(chip: Chip) {
+        val d = resources.displayMetrics.density
+        chip.chipMinHeight = 32 * d
+        chip.textSize = 13f
+        chip.ensureAccessibleTouchTarget((44 * d).toInt())
     }
 
     /** 「＋」：用一个新身份打开当前网站的首页 */
