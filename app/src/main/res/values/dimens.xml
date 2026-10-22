@@ -7,4 +7,6 @@
     <dimen name="cb_dock_clearance">64dp</dimen>
     <!-- 悬浮在底栏上方的浮层（选账号底栏、账号胶囊栏）：底栏高 + 底边距 + 4dp -->
     <dimen name="cb_overlay_above_dock">64dp</dimen>
+    <!-- 账号胶囊栏紧贴底栏顶边（底栏高 + 底边距，不留缝） -->
+    <dimen name="cb_identity_bar_margin_bottom">60dp</dimen>
 </resources>

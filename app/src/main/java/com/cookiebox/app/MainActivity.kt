@@ -1926,7 +1926,7 @@ class MainActivity : AppCompatActivity() {
         }
         bar.removeAllViews()
         val active = getActiveTab()
-        val gap = (8 * resources.displayMetrics.density).toInt()
+        val gap = (6 * resources.displayMetrics.density).toInt()
         fun lp() = android.widget.LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
         ).apply { marginEnd = gap }
@@ -2035,12 +2035,18 @@ class MainActivity : AppCompatActivity() {
         applyContentBottomMargin()
     }
 
-    /** 账号胶囊做矮一点（视觉 32dp），可点区域仍保证 44dp */
+    /** 账号胶囊做成细条（视觉 24dp、可点区域 36dp），尽量少占网页空间（T-030 用户反馈两次嫌挡） */
     private fun compactChip(chip: Chip) {
         val d = resources.displayMetrics.density
-        chip.chipMinHeight = 32 * d
-        chip.textSize = 13f
-        chip.ensureAccessibleTouchTarget((44 * d).toInt())
+        chip.chipMinHeight = 24 * d
+        chip.textSize = 12f
+        chip.chipStartPadding = 6 * d
+        chip.chipEndPadding = 6 * d
+        chip.textStartPadding = 2 * d
+        chip.textEndPadding = 2 * d
+        chip.chipIconSize = 12 * d
+        chip.elevation = 0f
+        chip.ensureAccessibleTouchTarget((36 * d).toInt())
     }
 
     /** 「＋」：用一个新身份打开当前网站的首页 */

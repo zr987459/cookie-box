@@ -382,11 +382,11 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom"
-        android:layout_marginBottom="@dimen/cb_overlay_above_dock"
+        android:layout_marginBottom="@dimen/cb_identity_bar_margin_bottom"
         android:clipToPadding="false"
         android:elevation="8dp"
-        android:paddingStart="14dp"
-        android:paddingEnd="14dp"
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp"
         android:scrollbars="none"
         android:visibility="gone">
 
