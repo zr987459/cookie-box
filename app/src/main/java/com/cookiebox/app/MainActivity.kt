@@ -2102,6 +2102,40 @@ class MainActivity : AppCompatActivity() {
 
     private var barsHidden = false
     private var scrollAccum = 0
+    /** 窗口尺寸刚变化（小窗 / 分屏 / 旋转）后的一小段时间内，网页的滚动是布局引起的，不能当成用户上滑 */
+    private var ignoreScrollUntil = 0L
+
+    /** 窗口尺寸变化或从小窗、后台回来：顶栏底栏一律恢复显示 */
+    private fun restoreBarsAfterWindowChange() {
+        if (!::binding.isInitialized) return
+        ignoreScrollUntil = System.currentTimeMillis() + 800
+        barsHidden = true // 强制走一遍 showBars，把 translation 和 AppBar 复位
+        showBars()
+        binding.appBarLayout.setExpanded(true, false)
+        binding.bottomAppBar.translationY = 0f
+        binding.scrollIdentityBar.translationY = 0f
+        binding.root.post { applyContentBottomMargin() }
+    }
+
+    override fun onMultiWindowModeChanged(isInMultiWindowMode: Boolean, newConfig: android.content.res.Configuration) {
+        super.onMultiWindowModeChanged(isInMultiWindowMode, newConfig)
+        restoreBarsAfterWindowChange()
+    }
+
+    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: android.content.res.Configuration) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        restoreBarsAfterWindowChange()
+    }
+
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        restoreBarsAfterWindowChange()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        restoreBarsAfterWindowChange()
+    }
 
     /**
      * 网页底部让出的空间 = 根布局底边到「底栏 / 账号胶囊栏」顶边的实际距离 + 4dp。
@@ -2136,11 +2170,22 @@ class MainActivity : AppCompatActivity() {
         binding.bottomAppBar.addOnLayoutChangeListener(l)
         binding.scrollIdentityBar.addOnLayoutChangeListener(l)
         binding.root.addOnLayoutChangeListener(l)
+        // 小窗（自由窗口）拖动缩放时不一定回调 onConfigurationChanged：根布局尺寸一变就复位顶栏底栏
+        binding.root.addOnLayoutChangeListener { _, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
+            val changed = (right - left) != (oldRight - oldLeft) || (bottom - top) != (oldBottom - oldTop)
+            if (changed && oldRight != 0) binding.root.post { restoreBarsAfterWindowChange() }
+        }
     }
 
     private fun onWebScrolled(tab: TabItem, scrollY: Int, dy: Int) {
         if (tab.id != activeTabId) return
         if (scrollY <= 0) { showBars(); return }
+        if (System.currentTimeMillis() < ignoreScrollUntil) { scrollAccum = 0; return }
+        // 内容不比屏幕高多少的页面没法再下滑把栏拉回来，这种页面不收起
+        val wv = tab.webView
+        if (wv != null && wv.contentHeight * wv.scale < wv.height + 120 * resources.displayMetrics.density) {
+            showBars(); return
+        }
         if ((dy > 0) != (scrollAccum > 0)) scrollAccum = 0
         scrollAccum += dy
         val d = resources.displayMetrics.density
