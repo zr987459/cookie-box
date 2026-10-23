@@ -342,6 +342,23 @@ class MainActivity : AppCompatActivity() {
         return newTab
     }
 
+    /** 新标签页：空白主页，打开网站时再按站点决定用哪个账号 */
+    private fun openBlankTab() {
+        createNewTab(initialUrl = "", lazy = true)
+        toast("已新建标签页")
+    }
+
+    /** 新账号标签：全新的空身份（不带任何 Cookie / 登录），用来登录另一个账号 */
+    private fun openFreshIdentityTab() {
+        if (!ProfileIsolation.canIsolate()) {
+            warnIsolationUnavailable()
+            return
+        }
+        val tab = createNewTab(initialUrl = "", isClone = true)
+        onIdentitiesChanged()
+        toast("已新建「${identities.name(tab.profileName)}」，这里不带任何登录")
+    }
+
     /** 新身份的 Profile 名（沿用旧前缀，旧版的清理逻辑与 MCP 授权都认这个格式） */
     private fun newProfileName(): String = "Profile_Clone_${UUID.randomUUID().toString().take(8)}"
 
@@ -1167,8 +1184,7 @@ class MainActivity : AppCompatActivity() {
         }
         binding.btnNavTabs.setOnClickListener { openTabsDialog() }
         binding.btnNavTabs.setOnLongClickListener {
-            createNewTab(initialUrl = "", lazy = true)
-            toast("已新建标签页")
+            openBlankTab()
             true
         }
         binding.btnNavMore.setOnClickListener { showMoreSheet() }
@@ -1189,6 +1205,11 @@ class MainActivity : AppCompatActivity() {
         val hasPage = tab != null && tab.url.isNotBlank() && wv != null
         val pageUrl = { wv?.url?.takeIf { it != "about:blank" } ?: tab?.url.orEmpty() }
         val grid = listOf(
+            com.cookiebox.app.ui.MoreSheet.Item("新标签页", R.drawable.ic_add) { openBlankTab() },
+            com.cookiebox.app.ui.MoreSheet.Item("新账号标签", R.drawable.ic_person) { openFreshIdentityTab() },
+            com.cookiebox.app.ui.MoreSheet.Item("下载", R.drawable.ic_file_download, checked = downloader.store.runningCount() > 0) {
+                openDownloadsSheet()
+            },
             com.cookiebox.app.ui.MoreSheet.Item("储存库", R.drawable.ic_storage) { openStorageDialog() },
             com.cookiebox.app.ui.MoreSheet.Item("账号密码", R.drawable.ic_key) { openAccountsDialog() },
             com.cookiebox.app.ui.MoreSheet.Item("页内查找", R.drawable.ic_search, hasPage) { openFindBar() },
@@ -1201,13 +1222,10 @@ class MainActivity : AppCompatActivity() {
             com.cookiebox.app.ui.MoreSheet.Item(
                 "桌面版", R.drawable.ic_desktop, tab != null, checked = tab?.isDesktop == true
             ) { toggleActiveTabUserAgent() },
-            com.cookiebox.app.ui.MoreSheet.Item("下载", R.drawable.ic_file_download, checked = downloader.store.runningCount() > 0) {
-                openDownloadsSheet()
-            }
+            com.cookiebox.app.ui.MoreSheet.Item("分享", R.drawable.ic_share, hasPage) { tab?.let { shareText(pageUrl(), it.title) } }
         )
         val list = mutableListOf(
-            com.cookiebox.app.ui.MoreSheet.Item("分享", R.drawable.ic_share, hasPage) { tab?.let { shareText(pageUrl(), it.title) } },
-            com.cookiebox.app.ui.MoreSheet.Item("主页", R.drawable.ic_home, hasPage) { goHome() },
+            com.cookiebox.app.ui.MoreSheet.Item("当前标签回到主页", R.drawable.ic_home, hasPage) { goHome() },
             com.cookiebox.app.ui.MoreSheet.Item("加到首页快捷入口", R.drawable.ic_add, hasPage) {
                 tab?.let {
                     if (prefs.addShortcut(it.title, pageUrl())) {
@@ -1639,7 +1657,7 @@ class MainActivity : AppCompatActivity() {
         dialog.onTabSelected = { tabId -> switchTab(tabId) }
         dialog.onTabClosed = { tabId -> requestCloseTab(tabId) }
         dialog.onTabRenameRequested = { tabId -> showRenameTabDialog(tabId) }
-        dialog.onNewTabRequested = { _ -> createNewTab(initialUrl = "", lazy = true) }
+        dialog.onNewTabRequested = { fresh -> if (fresh) openFreshIdentityTab() else openBlankTab() }
         dialog.onDismissListener = { tabsDialog = null }
         dialog.identityOf = { t -> Pair(identities.name(t.profileName), identities.color(t.profileName)) }
         dialog.onCloseAllRequested = { requestCloseAllTabs() }

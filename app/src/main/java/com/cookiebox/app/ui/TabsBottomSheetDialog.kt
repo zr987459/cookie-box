@@ -93,6 +93,12 @@ class TabsBottomSheetDialog : BottomSheetDialogFragment() {
                 dismiss()
                 onNewTabRequested?.invoke(false)
             }
+            // 长按 +：新账号标签（全新的空身份）
+            b.btnNewTab.setOnLongClickListener {
+                dismiss()
+                onNewTabRequested?.invoke(true)
+                true
+            }
             b.btnCloseAll.setOnClickListener { onCloseAllRequested?.invoke() }
         }
     }
