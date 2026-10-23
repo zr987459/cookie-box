@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- 悬浮底栏尺寸（T-030 收窄：60→52dp，底边距 12→8dp）。
+    <!-- 悬浮底栏尺寸（T-030 再收窄：60→52→46dp，底边距 12→8→2dp，更贴底）。
          网页视窗底部留白在代码里按底栏 / 账号胶囊栏的实际位置计算（applyContentBottomMargin），这里只是首帧的初值 -->
-    <dimen name="cb_dock_height">52dp</dimen>
-    <dimen name="cb_dock_margin_bottom">8dp</dimen>
-    <dimen name="cb_dock_clearance">64dp</dimen>
+    <dimen name="cb_dock_height">46dp</dimen>
+    <dimen name="cb_dock_margin_bottom">2dp</dimen>
+    <dimen name="cb_dock_clearance">52dp</dimen>
     <!-- 悬浮在底栏上方的浮层（选账号底栏、账号胶囊栏）：底栏高 + 底边距 + 4dp -->
-    <dimen name="cb_overlay_above_dock">64dp</dimen>
+    <dimen name="cb_overlay_above_dock">52dp</dimen>
     <!-- 账号胶囊栏紧贴底栏顶边（底栏高 + 底边距，不留缝） -->
-    <dimen name="cb_identity_bar_margin_bottom">60dp</dimen>
+    <dimen name="cb_identity_bar_margin_bottom">48dp</dimen>
 </resources>
