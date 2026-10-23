@@ -2177,19 +2177,10 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun onWebScrolled(tab: TabItem, scrollY: Int, dy: Int) {
+    /** 用户要求顶栏、底栏常驻（T-030 反馈：多次切小窗后仍会消失）：不再随滚动收起，只保证处于显示状态 */
+    private fun onWebScrolled(tab: TabItem, @Suppress("UNUSED_PARAMETER") scrollY: Int, @Suppress("UNUSED_PARAMETER") dy: Int) {
         if (tab.id != activeTabId) return
-        if (scrollY <= 0) { showBars(); return }
-        if (System.currentTimeMillis() < ignoreScrollUntil) { scrollAccum = 0; return }
-        // 内容不比屏幕高多少的页面没法再下滑把栏拉回来，这种页面不收起
-        val wv = tab.webView
-        if (wv != null && wv.contentHeight * wv.scale < wv.height + 120 * resources.displayMetrics.density) {
-            showBars(); return
-        }
-        if ((dy > 0) != (scrollAccum > 0)) scrollAccum = 0
-        scrollAccum += dy
-        val d = resources.displayMetrics.density
-        if (scrollAccum > 48 * d) hideBars() else if (scrollAccum < -24 * d) showBars()
+        if (barsHidden) showBars()
     }
 
     private fun hideBars() {

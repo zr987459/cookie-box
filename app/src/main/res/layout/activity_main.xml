@@ -46,7 +46,7 @@
             app:cardCornerRadius="20dp"
             app:cardElevation="3dp"
             app:cardPreventCornerOverlap="false"
-            app:layout_scrollFlags="scroll|enterAlways|snap"
+            app:layout_scrollFlags="noScroll"
             app:strokeColor="@color/cb_hairline"
             app:strokeWidth="1dp"
             tools:targetApi="p">

@@ -11,8 +11,8 @@ android {
         applicationId = "com.cookiebox.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 37
-        versionName = "1.14.2"
+        versionCode = 38
+        versionName = "1.14.3"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
