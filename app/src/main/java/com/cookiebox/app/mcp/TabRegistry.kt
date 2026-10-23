@@ -194,16 +194,10 @@ object McpTabs : TabRegistry {
             )
         }
 
-        override fun cookieManagerFor(profileName: String): CookieManager? {
-            if (!WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) return CookieManager.getInstance()
-            return try {
-                // 不创建新身份：只取已存在的
-                ProfileStore.getInstance().getProfile(profileName)?.cookieManager
-                    ?: if (profileName == DEFAULT_PROFILE) ProfileStore.getInstance().getOrCreateProfile(profileName).cookieManager else null
-            } catch (e: Exception) {
-                null
-            }
-        }
+        override fun cookieManagerFor(profileName: String): CookieManager? =
+            // T-030：与 MainActivity 共用同一条规则——不支持多 Profile 时只有默认身份映射到全局，
+            // 其他身份返回 null，绝不把分身的请求混进默认身份
+            com.cookiebox.app.engine.ProfileIsolation.cookieManagerFor(profileName)
     }
 
     private fun defaultUa(desktop: Boolean): String {

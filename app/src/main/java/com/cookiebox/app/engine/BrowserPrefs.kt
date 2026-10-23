@@ -77,6 +77,11 @@ class BrowserPrefs(context: Context) {
         saveShortcuts(getShortcuts().filterNot { it.url == url })
     }
 
+    // ---------- T-030 一次性迁移标记（新增键，不改旧键） ----------
+    var defaultIdentityMigrated: Boolean
+        get() = sp.getBoolean("t030_default_identity_migrated", false)
+        set(v) = sp.edit().putBoolean("t030_default_identity_migrated", v).apply()
+
     // ---------- 标签会话 ----------
     fun saveSession(tabs: List<SavedTab>, activeIndex: Int) {
         val arr = JSONArray()

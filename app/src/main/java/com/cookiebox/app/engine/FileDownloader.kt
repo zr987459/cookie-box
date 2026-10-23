@@ -29,6 +29,7 @@ import java.io.OutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLDecoder
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -38,15 +39,27 @@ import java.util.concurrent.atomic.AtomicInteger
  * - 优先使用服务器返回的 Content-Disposition 文件名（支持 filename*=UTF-8''）
  * - Android 10+ 写入 MediaStore「下载」目录，无需存储权限；旧系统写入公共下载目录
  * - 通知栏显示进度，完成后点击即可打开（APK 直接进入安装）
+ * - 每次下载都写进 [DownloadStore]，下载管理面板据此显示进度、取消、打开、删除
  */
 class FileDownloader(context: Context) {
 
-    data class Result(val uri: Uri, val fileName: String, val mimeType: String)
+    data class Result(val uri: Uri, val fileName: String, val mimeType: String, val id: Long = 0)
+
+    private class Canceled : IOException("已取消")
 
     private val appContext = context.applicationContext
     private val main = Handler(Looper.getMainLooper())
     private val executor = Executors.newFixedThreadPool(3)
     private val ids = AtomicInteger(4000)
+    val store = DownloadStore.get(context)
+    /** 下载记录 id → 是否已请求取消 */
+    private val cancelFlags = ConcurrentHashMap<Long, Boolean>()
+    /** 下载记录 id → 通知 id */
+    private val notifyIds = ConcurrentHashMap<Long, Int>()
+
+    fun cancel(id: Long) {
+        if (cancelFlags.containsKey(id)) cancelFlags[id] = true
+    }
 
     init {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -65,8 +78,13 @@ class FileDownloader(context: Context) {
         contentDisposition: String?,
         mimeHint: String?,
         onDone: (Result?, String?) -> Unit
-    ) {
+    ): Long {
         val notifyId = ids.incrementAndGet()
+        val recId = store.create(
+            URLUtil.guessFileName(url, contentDisposition, mimeHint), url, referer, mimeHint
+        )
+        cancelFlags[recId] = false
+        notifyIds[recId] = notifyId
         executor.execute {
             var conn: HttpURLConnection? = null
             try {
@@ -112,32 +130,77 @@ class FileDownloader(context: Context) {
                     mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: "application/octet-stream"
                 }
                 val total = c.contentLengthLong
+                val finalMime = mime!!
+                store.update(recId, force = true) { it.fileName = fileName; it.mime = finalMime; it.total = total }
                 notifyProgress(notifyId, fileName, 0, total)
                 val result = c.inputStream.use { input ->
-                    save(input, fileName, mime!!) { done -> notifyProgress(notifyId, fileName, done, total) }
-                }
+                    save(input, fileName, finalMime, recId) { done ->
+                        store.update(recId) { it.done = done }
+                        notifyProgress(notifyId, fileName, done, total)
+                    }
+                }.copy(id = recId)
                 notifyDone(notifyId, result)
                 main.post { onDone(result, null) }
+            } catch (e: Canceled) {
+                store.update(recId, force = true) { it.status = DownloadStore.Status.CANCELED; it.error = null; it.uri = null; it.path = null }
+                cancelNotification(notifyId)
             } catch (e: Exception) {
-                notifyFailed(notifyId, e.message ?: e.javaClass.simpleName)
-                main.post { onDone(null, e.message ?: e.javaClass.simpleName) }
+                val msg = e.message ?: e.javaClass.simpleName
+                store.update(recId, force = true) { it.status = DownloadStore.Status.FAILED; it.error = msg }
+                notifyFailed(notifyId, msg)
+                main.post { onDone(null, msg) }
             } finally {
                 conn?.disconnect()
+                cancelFlags.remove(recId)
+                notifyIds.remove(recId)
             }
         }
+        return recId
     }
 
     /** 保存网页脚本生成的数据（blob: / data:） */
     fun saveBytes(bytes: ByteArray, fileName: String, mimeType: String, onDone: (Result?, String?) -> Unit) {
         val notifyId = ids.incrementAndGet()
+        val name = sanitize(fileName)
+        val recId = store.create(name, null, null, mimeType)
+        store.update(recId) { it.total = bytes.size.toLong() }
         executor.execute {
             try {
-                val result = bytes.inputStream().use { save(it, sanitize(fileName), mimeType) {} }
+                val result = bytes.inputStream().use { save(it, name, mimeType, recId) {} }.copy(id = recId)
                 notifyDone(notifyId, result)
                 main.post { onDone(result, null) }
             } catch (e: Exception) {
-                main.post { onDone(null, e.message ?: e.javaClass.simpleName) }
+                val msg = e.message ?: e.javaClass.simpleName
+                store.update(recId, force = true) { it.status = DownloadStore.Status.FAILED; it.error = msg }
+                main.post { onDone(null, msg) }
             }
+        }
+    }
+
+    /**
+     * 删除下载的文件。返回 null 表示已删除（或文件本来就不在）；
+     * Android 11+ 遇到不属于本应用的文件（例如卸载重装后）返回系统删除请求的 IntentSender，由界面发起确认。
+     */
+    fun deleteFile(rec: DownloadStore.Rec): android.content.IntentSender? {
+        val path = rec.path
+        if (path != null) {
+            File(path).delete()
+        }
+        val u = rec.uri ?: return null
+        val uri = Uri.parse(u)
+        if (uri.scheme == "file") {
+            uri.path?.let { File(it).delete() }
+            return null
+        }
+        return try {
+            appContext.contentResolver.delete(uri, null, null)
+            null
+        } catch (e: SecurityException) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                MediaStore.createDeleteRequest(appContext.contentResolver, listOf(uri)).intentSender
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && e is android.app.RecoverableSecurityException) {
+                e.userAction.actionIntent.intentSender
+            } else throw e
         }
     }
 
@@ -148,7 +211,7 @@ class FileDownloader(context: Context) {
 
     // ---------- 写文件 ----------
 
-    private fun save(input: InputStream, fileName: String, mime: String, onProgress: (Long) -> Unit): Result {
+    private fun save(input: InputStream, fileName: String, mime: String, recId: Long, onProgress: (Long) -> Unit): Result {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val resolver = appContext.contentResolver
             val values = ContentValues().apply {
@@ -159,9 +222,10 @@ class FileDownloader(context: Context) {
             }
             val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
                 ?: throw IOException("无法在「下载」目录创建文件")
+            store.update(recId, force = true) { it.uri = uri.toString() }
             try {
                 val out = resolver.openOutputStream(uri) ?: throw IOException("无法写入文件")
-                out.use { copy(input, it, onProgress) }
+                out.use { copy(input, it, recId, onProgress) }
                 resolver.update(uri, ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null)
             } catch (e: Exception) {
                 try { resolver.delete(uri, null, null) } catch (_: Exception) {}
@@ -174,27 +238,43 @@ class FileDownloader(context: Context) {
                     if (cur.moveToFirst()) realName = cur.getString(0) ?: fileName
                 }
             } catch (_: Exception) {}
+            val size = try {
+                resolver.query(uri, arrayOf(MediaStore.MediaColumns.SIZE), null, null, null)?.use { cur ->
+                    if (cur.moveToFirst()) cur.getLong(0) else -1L
+                } ?: -1L
+            } catch (_: Exception) { -1L }
+            store.update(recId, force = true) {
+                it.fileName = realName; it.status = DownloadStore.Status.DONE; it.error = null
+                if (size >= 0) { it.total = size; it.done = size }
+            }
             Result(uri, realName, mime)
         } else {
             @Suppress("DEPRECATION")
             val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
             if (!dir.exists()) dir.mkdirs()
             val file = uniqueFile(dir, fileName)
+            store.update(recId, force = true) { it.path = file.absolutePath }
             try {
-                FileOutputStream(file).use { copy(input, it, onProgress) }
+                FileOutputStream(file).use { copy(input, it, recId, onProgress) }
             } catch (e: Exception) {
                 file.delete()
                 throw e
             }
-            Result(scanForUri(file, mime), file.name, mime)
+            val uri = scanForUri(file, mime)
+            store.update(recId, force = true) {
+                it.fileName = file.name; it.uri = uri.toString(); it.status = DownloadStore.Status.DONE
+                it.error = null; it.total = file.length(); it.done = file.length()
+            }
+            Result(uri, file.name, mime)
         }
     }
 
-    private fun copy(input: InputStream, out: OutputStream, onProgress: (Long) -> Unit) {
+    private fun copy(input: InputStream, out: OutputStream, recId: Long, onProgress: (Long) -> Unit) {
         val buf = ByteArray(64 * 1024)
         var done = 0L
         var lastReport = 0L
         while (true) {
+            if (cancelFlags[recId] == true) throw Canceled()
             val n = input.read(buf)
             if (n < 0) break
             out.write(buf, 0, n)
@@ -313,6 +393,10 @@ class FileDownloader(context: Context) {
                 .setContentIntent(pi)
                 .setAutoCancel(true)
         )
+    }
+
+    private fun cancelNotification(id: Int) {
+        try { NotificationManagerCompat.from(appContext).cancel(id) } catch (_: Exception) {}
     }
 
     private fun notifyFailed(id: Int, reason: String) {
